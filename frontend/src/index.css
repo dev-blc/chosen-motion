@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Smooth scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: #334155;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+}
+
+@layer components {
+  /* Premium Glassmorphic Cards */
+  .glass-card-light {
+    @apply bg-white/70 backdrop-blur-md border border-white/40 shadow-glass-light;
+  }
+  
+  .glass-card-dark {
+    @apply bg-brand-cardDark/70 backdrop-blur-md border border-white/5 shadow-glass-dark;
+  }
+
+  .glass-card {
+    @apply glass-card-light dark:glass-card-dark rounded-2xl transition-all duration-300;
+  }
+
+  /* Interactive Premium Buttons */
+  .btn-primary {
+    @apply px-5 py-2.5 bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-700 hover:to-primary-600 text-white font-medium rounded-xl shadow-premium hover:shadow-indigo-500/20 active:scale-95 transition-all duration-150 flex items-center justify-center gap-2;
+  }
+
+  .btn-secondary {
+    @apply px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium rounded-xl active:scale-95 transition-all duration-150 flex items-center justify-center gap-2;
+  }
+
+  .btn-accent {
+    @apply px-5 py-2.5 bg-gradient-to-r from-accent-600 to-accent-500 hover:from-accent-700 hover:to-accent-600 text-white font-medium rounded-xl active:scale-95 transition-all duration-150 flex items-center justify-center gap-2;
+  }
+
+  /* Premium inputs */
+  .input-field {
+    @apply w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-500 focus:border-transparent transition-all duration-200 text-slate-800 dark:text-slate-100;
+  }
+
+  /* Dashboard Headers */
+  .header-title {
+    @apply font-display font-bold text-3xl tracking-tight text-slate-900 dark:text-white;
+  }
+}

@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: chosen_motion_db
+    restart: always
+    environment:
+      POSTGRES_DB: chosen_motion
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chosen_motion"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chosen_motion_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/chosen_motion
+      - SUPABASE_URL=https://your-supabase-project.supabase.co
+      - SUPABASE_JWT_SECRET=your-supabase-jwt-secret
+      - ENVIRONMENT=development
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chosen_motion_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_SUPABASE_URL=https://your-supabase-project.supabase.co
+      - VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
