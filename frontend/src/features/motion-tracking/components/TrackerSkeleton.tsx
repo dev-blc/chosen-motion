@@ -66,8 +66,11 @@ const TrackerSkeleton: React.FC = () => {
   const lastRomVal = useRef<number>(0);
   const lastRomTime = useRef<number>(0);
   const lastSpeedVal = useRef<number>(0);
+  const speedsArray = useRef<number[]>([]);
 
   const timerRef = useRef<any>(null);
+  const telemetryTimerRef = useRef<any>(null);
+  const startTimeRef = useRef<number>(0);
   const poseBuffer = useRef<PoseBuffer>(new PoseBuffer());
   const lastLandmarks = useRef<any>(null);
   const repState = useRef<'flexed' | 'extended'>('extended');
@@ -201,6 +204,10 @@ const TrackerSkeleton: React.FC = () => {
       speed: { passed: speedPassed, message: speedMessage }
     });
 
+    if (active) {
+      speedsArray.current.push(speedDegPerSec);
+    }
+
     // 3. Evaluate rules live against calculatedRom (overall ROM check)
     let currentStatus: 'success' | 'warning' | 'idle' = 'idle';
     if (calculatedRom > 0 && rules && rules.length > 0) {
@@ -243,12 +250,6 @@ const TrackerSkeleton: React.FC = () => {
     if (active) {
       timerRef.current = setInterval(() => {
         setDuration(prev => prev + 1);
-
-        // Record telemetry frame using PoseBuffer
-        if (lastLandmarks.current) {
-          poseBuffer.current.pushFrame(Date.now(), lastLandmarks.current);
-        }
-
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -259,11 +260,33 @@ const TrackerSkeleton: React.FC = () => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [active, duration]);
+  }, [active]);
+
+  // Telemetry frame capture loop (5 fps / every 200ms)
+  useEffect(() => {
+    if (active) {
+      startTimeRef.current = Date.now();
+      telemetryTimerRef.current = setInterval(() => {
+        if (lastLandmarks.current) {
+          const elapsed = Date.now() - startTimeRef.current;
+          poseBuffer.current.pushFrame(elapsed, lastLandmarks.current);
+        }
+      }, 200);
+    } else {
+      if (telemetryTimerRef.current) {
+        clearInterval(telemetryTimerRef.current);
+      }
+    }
+
+    return () => {
+      if (telemetryTimerRef.current) clearInterval(telemetryTimerRef.current);
+    };
+  }, [active]);
 
   const handleStart = () => {
     setActive(true);
     poseBuffer.current.clear();
+    speedsArray.current = [];
     setReps(0);
     setRom(0);
     setLiveStatus('idle');
@@ -271,18 +294,27 @@ const TrackerSkeleton: React.FC = () => {
 
   const handleStop = async () => {
     setActive(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (telemetryTimerRef.current) clearInterval(telemetryTimerRef.current);
+
     const frames = poseBuffer.current.getFrames();
     if (frames.length === 0) return;
 
     setSaving(true);
     try {
       const stats = poseBuffer.current.getStats();
+      const avgSpeed = speedsArray.current.length > 0
+        ? Math.round(speedsArray.current.reduce((a, b) => a + b, 0) / speedsArray.current.length)
+        : 0;
+      
       await uploadMotionSession({
         title: `${exerciseName} - ${new Date().toLocaleDateString()}`,
         description: `Active camera session tracking joint movements for ${exerciseName}.`,
         duration_seconds: duration,
         avg_score: stats.avgConfidence,
         range_of_motion: rom,
+        speed: avgSpeed,
+        symmetry: 1.0,
         status: liveStatus,
         metrics_summary: {
           repetitions: reps,
@@ -310,6 +342,7 @@ const TrackerSkeleton: React.FC = () => {
     setRom(0);
     setLiveStatus('idle');
     poseBuffer.current.clear();
+    speedsArray.current = [];
     lastLandmarks.current = null;
   };
 

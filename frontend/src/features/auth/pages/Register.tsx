@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { syncUserWithBackend, signUpWithBackend } from '@/services/api';
 import { Activity, Lock, Mail, User, Shield, AlertCircle, Loader2 } from 'lucide-react';
 
 const Register: React.FC = () => {
@@ -19,24 +20,69 @@ const Register: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    const { error: signUpErr, data } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
+    if (role === 'patient') {
+      try {
+        const data = await signUpWithBackend({
+          email,
+          password,
+          full_name: `${firstName} ${lastName}`.trim() || 'Patient',
           first_name: firstName,
           last_name: lastName,
-          role: role,
-        },
-      },
-    });
+        });
 
-    if (signUpErr) {
-      setError(signUpErr.message);
-      setLoading(false);
-    } else if (data?.user) {
-      setSuccess(true);
-      setLoading(false);
+        if (data.access_token) {
+          // Set supabase session
+          await supabase.auth.setSession({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token || '',
+          });
+          setLoading(false);
+          navigate('/');
+        } else {
+          setSuccess(true);
+          setLoading(false);
+        }
+      } catch (err: any) {
+        setError(err.message || 'Registration failed.');
+        setLoading(false);
+      }
+    } else {
+      // Clinician flow
+      const { error: signUpErr, data } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            role: role,
+          },
+        },
+      });
+
+      if (signUpErr) {
+        setError(signUpErr.message);
+        setLoading(false);
+      } else if (data?.session) {
+        try {
+          if (data.user) {
+            await syncUserWithBackend({
+              id: data.user.id,
+              email: data.user.email || email,
+              role: role,
+              first_name: firstName,
+              last_name: lastName,
+            });
+          }
+        } catch (syncErr) {
+          console.error('Failed to sync clinician during registration:', syncErr);
+        }
+        setLoading(false);
+        navigate('/');
+      } else if (data?.user) {
+        setSuccess(true);
+        setLoading(false);
+      }
     }
   };
 

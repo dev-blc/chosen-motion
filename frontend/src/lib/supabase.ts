@@ -8,10 +8,17 @@ if (supabaseUrl) {
   supabaseUrl = supabaseUrl.replace(/\/rest\/v1\/?$/, '');
 }
 
-if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+export const isSupabaseConfigured = !!(
+  import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_ANON_KEY &&
+  !import.meta.env.VITE_SUPABASE_URL.includes('placeholder-project')
+);
+
+if (!isSupabaseConfigured) {
   console.warn(
-    'Supabase environment variables are missing! Authentication will run in mock/fallback mode.'
+    'Supabase environment variables are missing or placeholders! Authentication will run in mock/fallback mode.'
   );
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+

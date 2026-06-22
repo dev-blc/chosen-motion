@@ -1,11 +1,19 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v1';
 
 async function request(path: string, options: RequestInit = {}) {
   // Retrieve the active Supabase session
-  const { data: { session } } = await supabase.auth.getSession();
-  let token = session?.access_token;
+  let token: string | undefined = undefined;
+  
+  if (isSupabaseConfigured) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      token = session?.access_token;
+    } catch (err) {
+      console.warn('Failed to retrieve Supabase session:', err);
+    }
+  }
 
   // Generate a mock JWT format token if running in Sandbox/Demo mode
   if (!token) {
@@ -67,6 +75,20 @@ export async function syncUserWithBackend(userData: {
   });
 }
 
+export async function signUpWithBackend(data: Record<string, any>) {
+  return request('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function loginWithBackend(data: Record<string, any>) {
+  return request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 // ==========================================
 // Patient APIs
 // ==========================================
@@ -75,7 +97,14 @@ export async function fetchPatientProfile() {
   return request('/patients/profile');
 }
 
+export async function fetchPatientById(patientId: string) {
+  return request(`/patients/${patientId}`);
+}
+
 export async function updatePatientProfile(data: {
+  full_name?: string;
+  phone?: string;
+  gender?: string;
   date_of_birth?: string;
   diagnosis?: string;
   assigned_admin_id?: string;
@@ -92,9 +121,11 @@ export async function uploadMotionSession(sessionData: {
   duration_seconds: number;
   avg_score?: number;
   range_of_motion?: number;
+  speed?: number;
+  symmetry?: number;
   status?: string;
   metrics_summary?: Record<string, any>;
-  telemetry_data: Array<{
+  telemetry_data?: Array<{
     timestamp_millis: number;
     joint_coordinates: Record<string, number[]>;
     sensor_signals?: Record<string, any>;
@@ -115,7 +146,23 @@ export async function fetchMyAssignments() {
 }
 
 export async function fetchSessionDetail(sessionId: number) {
-  return request(`/patients/sessions/${sessionId}`);
+  return request(`/motion-sessions/${sessionId}`);
+}
+
+export async function fetchSessionFrames(sessionId: number) {
+  return request(`/motion-sessions/${sessionId}/frames`);
+}
+
+export async function fetchSessionMetrics(sessionId: number) {
+  return request(`/motion-sessions/${sessionId}/metrics`);
+}
+
+export async function fetchSessionAccuracy(sessionId: number) {
+  return request(`/motion-sessions/${sessionId}/accuracy`);
+}
+
+export async function fetchSessionComparison(sessionId: number) {
+  return request(`/motion-sessions/${sessionId}/comparison`);
 }
 
 // ==========================================

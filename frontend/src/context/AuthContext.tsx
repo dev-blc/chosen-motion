@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
-import { syncUserWithBackend, fetchUserProfile } from '@/services/api';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { syncUserWithBackend, fetchUserProfile, fetchPatientProfile } from '@/services/api';
 
 export interface UserProfile {
   id: string;
@@ -9,6 +9,8 @@ export interface UserProfile {
   role: 'admin' | 'patient';
   firstName?: string;
   lastName?: string;
+  patientId?: string;
+  gender?: string;
 }
 
 interface AuthContextType {
@@ -33,12 +35,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadProfile = async (sessionUser: User) => {
     try {
       const data = await fetchUserProfile();
+      let patientId: string | undefined;
+      let gender: string | undefined;
+
+      if (data.role === 'patient') {
+        try {
+          const patientData = await fetchPatientProfile();
+          patientId = patientData.patient_id;
+          gender = patientData.gender;
+        } catch (patientErr) {
+          console.warn('Failed to load patient sub-profile:', patientErr);
+        }
+      }
+
       setProfile({
         id: data.id,
         email: data.email,
         role: data.role as 'admin' | 'patient',
         firstName: data.first_name,
         lastName: data.last_name,
+        patientId,
+        gender,
       });
     } catch (err) {
       console.warn('Failed to load profile from backend, syncing metadata...', err);
@@ -51,12 +68,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           first_name: userMetadata.first_name || '',
           last_name: userMetadata.last_name || '',
         });
+
+        let patientId: string | undefined;
+        let gender: string | undefined;
+
+        if (synced.role === 'patient') {
+          try {
+            const patientData = await fetchPatientProfile();
+            patientId = patientData.patient_id;
+            gender = patientData.gender;
+          } catch (pErr) {
+            console.warn('Failed to fetch patient sub-profile after sync:', pErr);
+          }
+        }
+
         setProfile({
           id: synced.id,
           email: synced.email,
           role: synced.role as 'admin' | 'patient',
           firstName: synced.first_name,
           lastName: synced.last_name,
+          patientId,
+          gender,
         });
       } catch (syncErr) {
         console.error('Failed to sync profile with backend', syncErr);
@@ -107,16 +140,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check if we have a mock user in localStorage
     const savedMockUser = localStorage.getItem('chosen_motion_mock_user');
     if (savedMockUser) {
-      const parsedUser = JSON.parse(savedMockUser) as User;
-      setUser(parsedUser);
-      setProfile({
-        id: parsedUser.id,
-        email: parsedUser.email || '',
-        role: parsedUser.user_metadata?.role || 'patient',
-        firstName: parsedUser.user_metadata?.first_name,
-        lastName: parsedUser.user_metadata?.last_name,
-      });
-      setIsMock(true);
+      try {
+        const parsedUser = JSON.parse(savedMockUser) as User;
+        setUser(parsedUser);
+        setProfile({
+          id: parsedUser.id,
+          email: parsedUser.email || '',
+          role: parsedUser.user_metadata?.role || 'patient',
+          firstName: parsedUser.user_metadata?.first_name,
+          lastName: parsedUser.user_metadata?.last_name,
+        });
+        setIsMock(true);
+        setLoading(false);
+        return;
+      } catch (err) {
+        console.warn('Failed to parse saved mock user, clearing...', err);
+        localStorage.removeItem('chosen_motion_mock_user');
+      }
+    }
+
+    if (!isSupabaseConfigured) {
+      setUser(null);
+      setProfile(null);
       setLoading(false);
       return;
     }

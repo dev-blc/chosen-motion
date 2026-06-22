@@ -1,3 +1,4 @@
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from typing import Generator
@@ -8,7 +9,7 @@ if settings.DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 else:
     connect_args = {}
-
+print(settings.DATABASE_URL)
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args=connect_args

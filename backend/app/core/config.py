@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     # Supabase Settings (Auth)
     SUPABASE_URL: str
+    SUPABASE_ANON_KEY: str = ""
     SUPABASE_JWT_SECRET: str = "your-supabase-jwt-secret-from-dashboard"
 
     model_config = ConfigDict(

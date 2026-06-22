@@ -6,6 +6,7 @@ import Register from '@/features/auth/pages/Register';
 import AdminDashboard from '@/features/admin/pages/AdminDashboard';
 import PatientDashboard from '@/features/patient/pages/PatientDashboard';
 import TrackerSkeleton from '@/features/motion-tracking/components/TrackerSkeleton';
+import { SessionReplayPage } from '@/features/motion-tracking/components/SessionReplayPage';
 import { Loader2 } from 'lucide-react';
 
 // ==========================================
@@ -82,6 +83,14 @@ const AppRoutes: React.FC = () => {
         }
       />
       <Route
+        path="/patient/session/:sessionId"
+        element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <SessionReplayPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/tracker"
         element={
           <ProtectedRoute allowedRoles={['patient']}>
@@ -96,6 +105,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/session/:sessionId"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <SessionReplayPage />
           </ProtectedRoute>
         }
       />

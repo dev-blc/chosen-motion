@@ -1,11 +1,14 @@
 import uuid
+import requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from typing import List, Optional
 from app.core.database import get_db
 from app.core.security import require_admin, UserPayload
+from app.core.config import settings
 from app.models.models import Patient, MotionSession as DbSession, User, Consent, ExerciseAssignment, Exercise
+from app.api.v1.endpoints.auth import generate_patient_id, get_supabase_auth_url
 from app.schemas.schemas import (
     PatientResponse, 
     DashboardStats, 
@@ -21,6 +24,17 @@ from app.schemas.schemas import (
 
 router = APIRouter()
 
+def find_patient_robust(patient_id: str, db: Session) -> Optional[Patient]:
+    patient = None
+    try:
+        uuid_val = uuid.UUID(patient_id)
+        patient = db.query(Patient).filter((Patient.id == uuid_val) | (Patient.auth_user_id == uuid_val)).first()
+    except ValueError:
+        pass
+    if not patient:
+        patient = db.query(Patient).filter(Patient.patient_id == patient_id).first()
+    return patient
+
 @router.get("/dashboard-stats", response_model=DashboardStats)
 def get_dashboard_statistics(
     current_user: UserPayload = Depends(require_admin),
@@ -34,7 +48,7 @@ def get_dashboard_statistics(
     
     # Calculate averages
     avg_duration = db.query(func.avg(DbSession.duration_seconds)).join(Patient).filter(Patient.is_archived == False).scalar() or 0.0
-    avg_score = db.query(func.avg(DbSession.avg_score)).join(Patient).filter(Patient.is_archived == False).scalar() or 0.0
+    avg_score = db.query(func.avg(DbSession.score)).join(Patient).filter(Patient.is_archived == False).scalar() or 0.0
 
     # Get recent sessions across active patients
     recent_sessions = db.query(DbSession).join(Patient).filter(Patient.is_archived == False).order_by(DbSession.created_at.desc()).limit(5).all()
@@ -58,7 +72,7 @@ def list_patients(
     List and search patients registered in the clinic system.
     Supports filtering by active/archived status and query search.
     """
-    query = db.query(Patient).join(User)
+    query = db.query(Patient)
     
     if not include_archived:
         query = query.filter(Patient.is_archived == False)
@@ -68,7 +82,7 @@ def list_patients(
         query = query.filter(
             or_(
                 Patient.full_name.ilike(search_filter),
-                User.email.ilike(search_filter),
+                Patient.email.ilike(search_filter),
                 Patient.diagnosis.ilike(search_filter)
             )
         )
@@ -93,25 +107,56 @@ def create_patient(
             detail="A user with this email address already exists."
         )
 
-    # 1. Create User Identity
-    generated_uuid = f"admin-gen-{uuid.uuid4()}"
-    name_parts = patient_data.full_name.split(" ", 1)
-    first_name = name_parts[0]
-    last_name = name_parts[1] if len(name_parts) > 1 else ""
+    # Try to register user in Supabase Auth to get a real auth_user_id
+    auth_user_id = None
+    temp_password = f"TempPass{uuid.uuid4().hex[:8]}!"
+    if settings.SUPABASE_ANON_KEY:
+        try:
+            auth_url = get_supabase_auth_url()
+            headers = {
+                "apikey": settings.SUPABASE_ANON_KEY,
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "email": patient_data.email,
+                "password": temp_password,
+                "options": {
+                    "data": {
+                        "role": "patient",
+                        "full_name": patient_data.full_name
+                    }
+                }
+            }
+            resp = requests.post(f"{auth_url}/signup", json=payload, headers=headers)
+            if resp.status_code in (200, 201):
+                resp_data = resp.json()
+                user_data = resp_data.get("user")
+                if user_data:
+                    auth_user_id = uuid.UUID(user_data.get("id"))
+        except Exception:
+            pass
 
+    # Fallback to random UUID if offline/failed
+    if not auth_user_id:
+        auth_user_id = uuid.uuid4()
+
+    # 1. Create User Identity
     new_user = User(
-        id=generated_uuid,
+        id=uuid.uuid4(),
+        auth_user_id=auth_user_id,
         email=patient_data.email,
-        role="patient",
-        first_name=first_name,
-        last_name=last_name
+        role="patient"
     )
     db.add(new_user)
     db.flush()
 
     # 2. Create Patient Profile
+    patient_id = generate_patient_id(db)
     new_patient = Patient(
-        user_id=new_user.id,
+        id=uuid.uuid4(),
+        patient_id=patient_id,
+        auth_user_id=auth_user_id,
+        email=patient_data.email,
         full_name=patient_data.full_name,
         date_of_birth=patient_data.date_of_birth,
         phone=patient_data.phone,
@@ -124,7 +169,7 @@ def create_patient(
     # 3. Create Consent record
     if patient_data.consent_level:
         new_consent = Consent(
-            patient_id=new_patient.user_id,
+            patient_id=patient_id,
             consent_level=patient_data.consent_level
         )
         db.add(new_consent)
@@ -143,23 +188,21 @@ def get_patient_profile(
     Fetch comprehensive profile history for a patient including personal details,
     consent settings, assigned programs, and tracking metrics logs.
     """
-    patient = db.query(Patient).filter(Patient.user_id == patient_id).first()
+    patient = find_patient_robust(patient_id, db)
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found."
         )
         
-    user = db.query(User).filter(User.id == patient_id).first()
-    
     # Retrieve relations
-    consents = db.query(Consent).filter(Consent.patient_id == patient_id).all()
-    assignments = db.query(ExerciseAssignment).filter(ExerciseAssignment.patient_id == patient_id).all()
-    sessions = db.query(DbSession).filter(DbSession.patient_id == patient_id).order_by(DbSession.created_at.desc()).all()
+    consents = db.query(Consent).filter(Consent.patient_id == patient.patient_id).all()
+    assignments = db.query(ExerciseAssignment).filter(ExerciseAssignment.patient_id == patient.patient_id).all()
+    sessions = db.query(DbSession).filter(DbSession.patient_id == patient.patient_id).order_by(DbSession.created_at.desc()).all()
 
     return PatientDetailFullResponse(
-        user_id=patient.user_id,
-        email=user.email if user else "",
+        user_id=str(patient.auth_user_id),
+        email=patient.email,
         full_name=patient.full_name,
         date_of_birth=patient.date_of_birth,
         phone=patient.phone,
@@ -180,7 +223,7 @@ def edit_patient(
     """
     Update patient personal details, rehab diagnosis, or archive status.
     """
-    patient = db.query(Patient).filter(Patient.user_id == patient_id).first()
+    patient = find_patient_robust(patient_id, db)
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -189,12 +232,6 @@ def edit_patient(
         
     if update_data.full_name is not None:
         patient.full_name = update_data.full_name
-        # Also update User first/last name if user exists
-        user = db.query(User).filter(User.id == patient_id).first()
-        if user:
-            name_parts = update_data.full_name.split(" ", 1)
-            user.first_name = name_parts[0]
-            user.last_name = name_parts[1] if len(name_parts) > 1 else ""
             
     if update_data.date_of_birth is not None:
         patient.date_of_birth = update_data.date_of_birth
@@ -218,7 +255,7 @@ def archive_patient(
     """
     Soft-delete/Archive a patient from the active roster.
     """
-    patient = db.query(Patient).filter(Patient.user_id == patient_id).first()
+    patient = find_patient_robust(patient_id, db)
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

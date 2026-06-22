@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { fetchMySessions, fetchPatientProfile, fetchMyAssignments } from '@/services/api';
 import { 
   Play, 
+  PlayCircle,
   Activity, 
   Clock, 
   TrendingUp, 
@@ -16,7 +17,6 @@ import {
   Dumbbell,
   ShieldCheck,
   ChevronRight,
-  AlertCircle,
   Sparkles,
   BarChart3
 } from 'lucide-react';
@@ -502,23 +502,32 @@ const PatientDashboard: React.FC = () => {
                         <div className="h-8.5 w-8.5 bg-primary-50 dark:bg-primary-950/20 text-primary-500 rounded-lg flex items-center justify-center font-bold">
                           <TrendingUp className="h-4 w-4" />
                         </div>
-                        <div>
+                        <div className="text-left">
                           <h5 className="font-semibold text-slate-900 dark:text-white block max-w-[120px] truncate">
                             {session.title || 'Workout'}
                           </h5>
-                          <span className="text-[9px] text-slate-400 block mt-0.5">
+                          <span className="text-[9px] text-slate-400 block mt-0.5 font-mono">
                             {new Date(session.completed_at || session.created_at).toLocaleDateString()}
                           </span>
                         </div>
                       </div>
                       
-                      <div className="text-right">
-                        <span className="font-bold text-slate-800 dark:text-slate-200 block">
-                          {session.avg_score || session.score}% Form
-                        </span>
-                        <span className="text-[9px] text-slate-400 block mt-0.5">
-                          {session.range_of_motion || 0}° ROM | {session.duration_seconds || 0}s
-                        </span>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                            {session.avg_score || session.score}% Form
+                          </span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5 font-mono">
+                            {Math.round(session.range_of_motion || 0)}° ROM | {session.duration_seconds || 0}s
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => navigate(`/patient/session/${session.id}`)}
+                          className="p-1.5 bg-slate-100 hover:bg-primary-100 dark:bg-slate-800 dark:hover:bg-primary-950/40 text-slate-500 hover:text-primary-500 dark:text-slate-400 dark:hover:text-primary-400 rounded-lg transition-all font-bold"
+                          title="Replay Session"
+                        >
+                          <PlayCircle className="h-4.5 w-4.5" />
+                        </button>
                       </div>
                     </div>
                   ))}

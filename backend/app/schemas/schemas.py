@@ -1,4 +1,5 @@
 from __future__ import annotations
+import uuid
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from typing import List, Optional, Dict, Any
@@ -16,22 +17,29 @@ class MessageResponse(BaseModel):
 
 class UserBase(BaseModel):
     email: EmailStr
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
     role: str = "patient"
 
 class UserCreate(UserBase):
-    id: str  # Matches Supabase UUID
+    auth_user_id: uuid.UUID
 
 class UserUpdate(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
     role: Optional[str] = None
 
 class UserResponse(UserBase):
-    id: str
+    id: uuid.UUID
+    auth_user_id: uuid.UUID
     created_at: datetime
-    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AdminResponse(BaseModel):
+    id: uuid.UUID
+    admin_id: str
+    auth_user_id: uuid.UUID
+    email: EmailStr
+    full_name: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -69,24 +77,58 @@ class PatientBase(BaseModel):
     diagnosis: Optional[str] = None
     assigned_admin_id: Optional[str] = None
     is_archived: bool = False
+    gender: Optional[str] = None
 
 class PatientCreate(PatientBase):
-    id: str
+    id: uuid.UUID
+    patient_id: str
+    auth_user_id: str
+    email: EmailStr
+    full_name: str
+    phone: Optional[str] = None
 
 class PatientUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    gender: Optional[str] = None
     date_of_birth: Optional[date] = None
     diagnosis: Optional[str] = None
     assigned_admin_id: Optional[str] = None
     is_archived: Optional[bool] = None
 
 class PatientResponse(PatientBase):
-    id: str
+    id: uuid.UUID
+    patient_id: str
+    auth_user_id: str
+    email: EmailStr
     full_name: str
     phone: Optional[str] = None
-    user: UserResponse
+    created_at: datetime
 
     class Config:
         from_attributes = True
+
+class UserSignUpRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    role: str = "patient" # 'patient' or 'admin'
+    gender: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    phone: Optional[str] = None
+
+class UserLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: Optional[str] = None
+    token_type: str = "bearer"
+    user_id: str
+    role: str = "patient"
+    patient_id: Optional[str] = None
+    admin_id: Optional[str] = None
 
 # Administrative CRUD Schemas
 class PatientCreateAdmin(BaseModel):
@@ -212,17 +254,59 @@ class MotionDataResponse(MotionDataBase):
 # Session Schemas
 # ==========================================
 
+class MotionFrameResponse(BaseModel):
+    id: uuid.UUID
+    session_id: int
+    frame_number: int
+    timestamp_millis: int
+    joint_coordinates: Dict[str, Any]
+    sensor_signals: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+class SessionFramesResponse(BaseModel):
+    session_id: int
+    frames: List[MotionFrameResponse]
+
+class SessionErrorDetail(BaseModel):
+    type: str
+    severity: str
+    timestamp_ms: int
+    description: str
+
+class SessionAccuracyResponse(BaseModel):
+    accuracy_score: float
+    detected_errors: List[SessionErrorDetail] = []
+
+class MetricCompare(BaseModel):
+    current: float
+    previous: float
+    delta: float
+
+class SessionComparisonResponse(BaseModel):
+    current_session_id: int
+    previous_session_id: Optional[int] = None
+    rom: MetricCompare
+    speed: MetricCompare
+    symmetry: MetricCompare
+    accuracy: MetricCompare
+    smoothness: MetricCompare
+    repetitions: MetricCompare
+
 class SessionBase(BaseModel):
     title: str = "Motion Tracking Session"
     description: Optional[str] = None
     duration_seconds: int = 0
     avg_score: Optional[float] = None
     range_of_motion: Optional[float] = None
+    speed: Optional[float] = None
+    symmetry: Optional[float] = None
     metrics_summary: Optional[Dict[str, Any]] = None
     status: Optional[str] = None
 
 class SessionCreate(SessionBase):
-    telemetry_data: List[MotionDataCreate] = []
+    telemetry_data: Optional[List[Any]] = None
 
 class SessionResponse(SessionBase):
     id: int
@@ -233,7 +317,7 @@ class SessionResponse(SessionBase):
         from_attributes = True
 
 class SessionDetailResponse(SessionResponse):
-    telemetry_data: List[MotionDataResponse] = []
+    telemetry_data: List[MotionFrameResponse] = []
 
     class Config:
         from_attributes = True

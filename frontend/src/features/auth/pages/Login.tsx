@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { loginWithBackend } from '@/services/api';
 import { Activity, Lock, Mail, AlertCircle, Loader2, User, Shield } from 'lucide-react';
 
 const Login: React.FC = () => {
@@ -17,16 +18,21 @@ const Login: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    const { error: authErr } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (authErr) {
-      setError(authErr.message || 'Authentication error. Use Sandbox Mode below.');
+    try {
+      const data = await loginWithBackend({ email, password });
+      if (data.access_token) {
+        await supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token || '',
+        });
+        navigate('/');
+      } else {
+        setError('Login failed. No session token returned.');
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication error. Use Sandbox Mode below.');
       setLoading(false);
-    } else {
-      navigate('/');
     }
   };
 
