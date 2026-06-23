@@ -3,8 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSession } from '@/services/api';
 import MotionTracking from './MotionTracking';
 import SkeletonMiniViewer from './SkeletonMiniViewer';
-import { PoseBuffer, calculateAngle } from '../utils/poseProcessor';
-import { ThumbsUpDetector } from '../utils/thumbsUpDetector';
+import { PoseBuffer, calculateAngle, computeFrameConfidence } from '../utils/poseProcessor';
+import { GestureTrigger } from '../utils/gestureTrigger';
 import { 
   ArrowLeft, 
   Activity, 
@@ -23,6 +23,8 @@ const TrackerSkeleton: React.FC = () => {
   const [cameraReady, setCameraReady] = useState(false);
   const [gestureStatus, setGestureStatus] = useState<'waiting' | 'holding' | 'countdown' | 'active'>('waiting');
   const [gestureHoldProgress, setGestureHoldProgress] = useState(0);
+  const [detectedGestureLabel, setDetectedGestureLabel] = useState<string | null>(null);
+  const [detectedGestureScore, setDetectedGestureScore] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [mirror, setMirror] = useState(true);
   const [duration, setDuration] = useState(0);
@@ -85,7 +87,7 @@ const TrackerSkeleton: React.FC = () => {
   const lastLandmarks = useRef<any>(null);
   const repState = useRef<'flexed' | 'extended'>('extended');
   const prevRepsRef = useRef(0);
-  const thumbsUpDetector = useRef<ThumbsUpDetector>(new ThumbsUpDetector());
+  const gestureTrigger = useRef<GestureTrigger>(new GestureTrigger());
   const gestureLockedRef = useRef(false);
   const countdownActiveRef = useRef(false);
   const handleStopRef = useRef<() => Promise<void>>(async () => {});
@@ -121,7 +123,7 @@ const TrackerSkeleton: React.FC = () => {
       setCountdown(null);
       countdownActiveRef.current = false;
       gestureLockedRef.current = false;
-      thumbsUpDetector.current.reset();
+      gestureTrigger.current.reset();
       speak('Go!');
       handleStartRef.current();
       return;
@@ -149,39 +151,43 @@ const TrackerSkeleton: React.FC = () => {
 
   // calculateJointAngle is imported from poseProcessor.ts
 
+  // MediaPipe GestureRecognizer callback (pretrained Thumb_Up model)
+  const handleGestureDetected = (gestures: { gesture: string; score: number; handedness: string }[]) => {
+    if (gestureLockedRef.current || saving) return;
+
+    const result = gestureTrigger.current.process(gestures);
+    setGestureHoldProgress(result.holdProgress);
+    setDetectedGestureLabel(result.currentGesture);
+    setDetectedGestureScore(result.confidence);
+
+    if (result.holding && !result.detected) {
+      setGestureStatus(countdownActiveRef.current ? 'countdown' : (activeRef.current ? 'active' : 'holding'));
+    } else if (!result.holding && !countdownActiveRef.current) {
+      setGestureStatus(activeRef.current ? 'active' : 'waiting');
+      setGestureHoldProgress(0);
+    }
+
+    if (result.detected) {
+      if (activeRef.current) {
+        gestureLockedRef.current = true;
+        gestureTrigger.current.reset();
+        speak('Workout stopped');
+        handleStopRef.current();
+        setTimeout(() => { gestureLockedRef.current = false; }, 3000);
+      } else if (!countdownActiveRef.current) {
+        countdownActiveRef.current = true;
+        gestureLockedRef.current = true;
+        gestureTrigger.current.disarm();
+        setGestureStatus('countdown');
+        setCountdown(3);
+      }
+    }
+  };
+
   // Real-time landmarks coordinates feedback handler
   const handlePoseDetected = (landmarks: any) => {
     if (!landmarks || landmarks.length === 0) return;
     lastLandmarks.current = landmarks;
-
-    // Thumbs-up gesture for workout start (with countdown) / stop
-    if (!gestureLockedRef.current && !saving) {
-      const thumbsResult = thumbsUpDetector.current.detect(landmarks);
-      setGestureHoldProgress(thumbsResult.holdProgress);
-
-      if (thumbsResult.holding && !thumbsResult.detected) {
-        setGestureStatus(countdownActiveRef.current ? 'countdown' : (activeRef.current ? 'active' : 'holding'));
-      } else if (!thumbsResult.holding && !countdownActiveRef.current) {
-        setGestureStatus(activeRef.current ? 'active' : 'waiting');
-        setGestureHoldProgress(0);
-      }
-
-      if (thumbsResult.detected) {
-        if (activeRef.current) {
-          gestureLockedRef.current = true;
-          thumbsUpDetector.current.reset();
-          speak('Workout stopped');
-          handleStopRef.current();
-          setTimeout(() => { gestureLockedRef.current = false; }, 3000);
-        } else if (!countdownActiveRef.current) {
-          countdownActiveRef.current = true;
-          gestureLockedRef.current = true;
-          thumbsUpDetector.current.disarm();
-          setGestureStatus('countdown');
-          setCountdown(3);
-        }
-      }
-    }
     
     // Calculate all 8 live angles (4 joints * 2 sides) + torso angle
     const angles = {
@@ -254,7 +260,7 @@ const TrackerSkeleton: React.FC = () => {
 
     setRom(calculatedRom);
 
-    const confidence = landmarks.reduce((acc: number, l: any) => acc + (l.visibility || 0), 0) / landmarks.length;
+    const confidence = computeFrameConfidence(landmarks);
     setScore(Math.round(confidence * 100));
 
     // Skip coaching analysis when workout is not active
@@ -474,12 +480,13 @@ const TrackerSkeleton: React.FC = () => {
     squatSessionIdRef.current = null;
     prevRepsRef.current = 0;
     repState.current = 'extended';
-    thumbsUpDetector.current.reset();
+    gestureTrigger.current.reset();
     gestureLockedRef.current = false;
     countdownActiveRef.current = false;
     setCountdown(null);
     setGestureStatus('active');
     setGestureHoldProgress(0);
+    setDetectedGestureLabel(null);
 
     if (exerciseName.toLowerCase().includes('squat')) {
       try {
@@ -568,12 +575,13 @@ const TrackerSkeleton: React.FC = () => {
     squatSessionIdRef.current = null;
     prevRepsRef.current = 0;
     repState.current = 'extended';
-    thumbsUpDetector.current.reset();
+    gestureTrigger.current.reset();
     gestureLockedRef.current = false;
     countdownActiveRef.current = false;
     setCountdown(null);
     setGestureStatus('waiting');
     setGestureHoldProgress(0);
+    setDetectedGestureLabel(null);
   };
 
 
@@ -608,6 +616,7 @@ const TrackerSkeleton: React.FC = () => {
             cameraEnabled={cameraReady}
             mirror={mirror}
             onPoseDetected={handlePoseDetected}
+            onGestureDetected={handleGestureDetected}
             onCameraReady={setCameraReady}
           />
 
@@ -626,11 +635,16 @@ const TrackerSkeleton: React.FC = () => {
                   {active
                     ? 'Hold thumbs up to stop workout'
                     : gestureStatus === 'holding'
-                      ? 'Hold steady...'
-                      : 'Hold thumbs up to start'}
+                      ? 'Thumb up detected — hold steady...'
+                      : 'Show thumbs up to camera to start'}
                 </span>
+                {detectedGestureLabel && (
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    AI sees: {detectedGestureLabel.replace(/_/g, ' ')} ({Math.round(detectedGestureScore * 100)}%)
+                  </span>
+                )}
                 {gestureStatus === 'holding' && !active && (
-                  <div className="h-1 w-32 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-1 w-40 bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-accent-400 transition-all duration-75"
                       style={{ width: `${Math.round(gestureHoldProgress * 100)}%` }}
@@ -891,8 +905,8 @@ const TrackerSkeleton: React.FC = () => {
             <AlertCircle className="h-4.5 w-4.5 shrink-0 text-indigo-400" />
             <p>
               {exerciseName.toLowerCase().includes('squat')
-                ? "Stand sideways to the camera for best accuracy. Hold a thumbs up to start — you'll get a 3-2-1 countdown. Thumbs up again to stop."
-                : "Camera calibrates automatically. Hold a thumbs up to start (3-2-1 countdown), then thumbs up again to stop. Keep your full body visible. Rest immediately if you feel pain."
+                ? "Stand sideways to the camera. Show a clear thumbs up — the AI gesture model will detect it, then you'll get a 3-2-1 countdown. Thumbs up again to stop."
+                : "Camera calibrates automatically. Show thumbs up to the camera (watch for 'AI sees: Thumb Up' on screen), then a 3-2-1 countdown starts the workout. Thumbs up again to stop."
               }
             </p>
           </div>
