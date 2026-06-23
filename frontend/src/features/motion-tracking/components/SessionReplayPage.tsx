@@ -162,10 +162,11 @@ export const SessionReplayPage: React.FC = () => {
         durationSeconds={session.duration_seconds}
         score={Math.round(session.score || 0)}
         status={session.status}
+        errorCount={accuracy?.detected_errors?.length || 0}
       />
 
       {/* Main Split Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:items-stretch">
         
         {/* Left: Replay Canvas viewport (7 cols) */}
         <div className="lg:col-span-7 flex flex-col gap-4">
@@ -176,63 +177,66 @@ export const SessionReplayPage: React.FC = () => {
         </div>
 
         {/* Right: Tabbed Detail Controls HUD (5 cols) */}
-        <div className="lg:col-span-5 flex flex-col gap-4 w-full">
-          {/* Tab selectors */}
-          <div className="flex p-1 bg-slate-900 border border-slate-850 rounded-xl gap-1">
-            <button
-              onClick={() => setActiveTab('alerts')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                activeTab === 'alerts'
-                  ? 'bg-slate-800 text-cyan-400 border border-slate-750 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <ShieldAlert className="h-4 w-4" />
-              <span>Form Alerts</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                activeTab === 'analytics'
-                  ? 'bg-slate-800 text-cyan-400 border border-slate-750 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <BarChart3 className="h-4 w-4" />
-              <span>Waveform & Trends</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('compare')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
-                activeTab === 'compare'
-                  ? 'bg-slate-800 text-cyan-400 border border-slate-750 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <GitCompare className="h-4 w-4" />
-              <span>Comparison</span>
-            </button>
+        <div className="lg:col-span-5 flex flex-col min-h-[520px] lg:min-h-0 lg:h-full w-full">
+          <div className="flex flex-col flex-1 min-h-0 bg-slate-900/40 border border-slate-850 rounded-2xl overflow-hidden">
+            {/* Tab selectors */}
+            <div className="flex-shrink-0 flex p-1.5 m-3 mb-0 bg-slate-950 border border-slate-850 rounded-xl gap-1">
+              <button
+                onClick={() => setActiveTab('alerts')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${
+                  activeTab === 'alerts'
+                    ? 'bg-slate-800 text-cyan-400 border border-slate-750 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <ShieldAlert className="h-4 w-4" />
+                <span>Form Alerts</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${
+                  activeTab === 'analytics'
+                    ? 'bg-slate-800 text-cyan-400 border border-slate-750 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <BarChart3 className="h-4 w-4" />
+                <span className="hidden sm:inline">Waveform & Trends</span>
+                <span className="sm:hidden">Trends</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('compare')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all ${
+                  activeTab === 'compare'
+                    ? 'bg-slate-800 text-cyan-400 border border-slate-750 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <GitCompare className="h-4 w-4" />
+                <span>Comparison</span>
+              </button>
+            </div>
+
+            {/* Tab content — unified scroll container prevents clipping glitches */}
+            <div className="flex-1 min-h-0 panel-scroll p-4 pt-3">
+              {activeTab === 'alerts' && (
+                <ErrorList errors={accuracy?.detected_errors || []} />
+              )}
+
+              {activeTab === 'analytics' && (
+                <SessionAnalytics 
+                  frames={frames} 
+                  history={history} 
+                  exerciseName={session.title ? session.title.split(" - ")[0] : "Exercise"}
+                  errorCount={accuracy?.detected_errors?.length || 0}
+                />
+              )}
+
+              {activeTab === 'compare' && comparison && (
+                <SessionComparison comparison={comparison} />
+              )}
+            </div>
           </div>
-
-          {/* Tab content panels */}
-          <div className="w-full">
-            {activeTab === 'alerts' && (
-              <ErrorList errors={accuracy?.detected_errors || []} />
-            )}
-
-            {activeTab === 'analytics' && (
-              <SessionAnalytics 
-                frames={frames} 
-                history={history} 
-                exerciseName={session.title ? session.title.split(" - ")[0] : "Exercise"} 
-              />
-            )}
-
-            {activeTab === 'compare' && comparison && (
-              <SessionComparison comparison={comparison} />
-            )}
-          </div>
-
         </div>
 
       </div>
