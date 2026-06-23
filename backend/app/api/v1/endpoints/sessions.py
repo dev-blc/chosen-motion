@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from app.core.database import get_db
 from app.core.security import get_current_user, UserPayload
 from app.models.models import MotionSession, MotionFrame, Patient
+from app.services.query_helpers import session_load_options
 from app.schemas.schemas import (
     SessionDetailResponse,
     SessionFramesResponse,
@@ -30,7 +31,12 @@ def get_session_detail(
     """
     Get detailed telemetry metrics and coordinates for a specific recording session.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -57,7 +63,12 @@ def get_session_frames(
     """
     Get all coordinate frames sorted by frame_number for skeleton replay.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -90,7 +101,12 @@ def get_session_metrics(
     """
     Get metrics summary including ROM, speed, symmetry, smoothness, repetitions, and accuracy.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -117,7 +133,12 @@ def get_session_accuracy(
     """
     Get accuracy score and list of detected form errors.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -154,7 +175,12 @@ def get_session_comparison(
     """
     Compare current session metrics against the patient's previous session for the same exercise.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

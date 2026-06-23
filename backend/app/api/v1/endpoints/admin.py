@@ -9,6 +9,7 @@ from app.core.security import require_admin, UserPayload
 from app.core.config import settings
 from app.models.models import Patient, MotionSession as DbSession, User, Consent, ExerciseAssignment, Exercise
 from app.api.v1.endpoints.auth import generate_patient_id, get_supabase_auth_url
+from app.services.query_helpers import session_load_options, assignment_load_options
 from app.schemas.schemas import (
     PatientResponse, 
     DashboardStats, 
@@ -19,7 +20,8 @@ from app.schemas.schemas import (
     MessageResponse,
     ExerciseResponse,
     ExerciseCreateAdmin,
-    ExerciseUpdateAdmin
+    ExerciseUpdateAdmin,
+    SessionResponse
 )
 
 router = APIRouter()
@@ -51,7 +53,15 @@ def get_dashboard_statistics(
     avg_score = db.query(func.avg(DbSession.score)).join(Patient).filter(Patient.is_archived == False).scalar() or 0.0
 
     # Get recent sessions across active patients
-    recent_sessions = db.query(DbSession).join(Patient).filter(Patient.is_archived == False).order_by(DbSession.created_at.desc()).limit(5).all()
+    recent_sessions = (
+        db.query(DbSession)
+        .join(Patient)
+        .filter(Patient.is_archived == False)
+        .options(*session_load_options())
+        .order_by(DbSession.completed_at.desc())
+        .limit(5)
+        .all()
+    )
 
     return DashboardStats(
         total_patients=total_patients,
@@ -197,10 +207,22 @@ def get_patient_profile(
         
     # Retrieve relations
     consents = db.query(Consent).filter(Consent.patient_id == patient.patient_id).all()
-    assignments = db.query(ExerciseAssignment).filter(ExerciseAssignment.patient_id == patient.patient_id).all()
-    sessions = db.query(DbSession).filter(DbSession.patient_id == patient.patient_id).order_by(DbSession.created_at.desc()).all()
+    assignments = (
+        db.query(ExerciseAssignment)
+        .filter(ExerciseAssignment.patient_id == patient.patient_id)
+        .options(*assignment_load_options())
+        .all()
+    )
+    sessions = (
+        db.query(DbSession)
+        .filter(DbSession.patient_id == patient.patient_id)
+        .options(*session_load_options())
+        .order_by(DbSession.completed_at.desc())
+        .all()
+    )
 
     return PatientDetailFullResponse(
+        patient_id=patient.patient_id,
         user_id=str(patient.auth_user_id),
         email=patient.email,
         full_name=patient.full_name,
@@ -275,7 +297,12 @@ def get_any_session_detail(
     """
     Access coordinates and metrics for any tracking session across the workspace.
     """
-    session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    session = (
+        db.query(DbSession)
+        .filter(DbSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -372,3 +399,40 @@ def delete_exercise_endpoint(
     db.delete(exercise)
     db.commit()
     return MessageResponse(message=f"Exercise '{exercise.name}' has been successfully deleted.")
+
+@router.get("/sessions", response_model=List[SessionResponse])
+def list_motion_sessions(
+    patient_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    List workout session reports for the Motion Reports admin view.
+    Optionally filter by patient_id. Returns sessions with exercise and metrics loaded.
+    """
+    query = (
+        db.query(DbSession)
+        .join(Patient)
+        .filter(Patient.is_archived == False)
+        .options(*session_load_options())
+    )
+
+    if patient_id:
+        patient = find_patient_robust(patient_id, db)
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Patient not found."
+            )
+        query = query.filter(DbSession.patient_id == patient.patient_id)
+
+    sessions = (
+        query
+        .order_by(DbSession.completed_at.desc())
+        .offset(max(offset, 0))
+        .limit(min(max(limit, 1), 200))
+        .all()
+    )
+    return sessions

@@ -1,4 +1,12 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import type {
+  AdminProfile,
+  DashboardStats,
+  Exercise,
+  MotionSession,
+  PatientDetail,
+  PatientListItem,
+} from '@/types/api';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v1';
 
@@ -169,11 +177,14 @@ export async function fetchSessionComparison(sessionId: number) {
 // Admin APIs
 // ==========================================
 
-export async function fetchDashboardStats() {
+export async function fetchDashboardStats(): Promise<DashboardStats> {
   return request('/admin/dashboard-stats');
 }
 
-export async function fetchPatientsList(search?: string, includeArchived: boolean = false) {
+export async function fetchPatientsList(
+  search?: string,
+  includeArchived: boolean = false
+): Promise<PatientListItem[]> {
   let path = '/admin/patients?';
   if (search) path += `search=${encodeURIComponent(search)}&`;
   path += `include_archived=${includeArchived}`;
@@ -194,7 +205,7 @@ export async function createPatient(data: {
   });
 }
 
-export async function fetchPatientDetail(patientId: string) {
+export async function fetchPatientDetail(patientId: string): Promise<PatientDetail> {
   return request(`/admin/patients/${patientId}/profile`);
 }
 
@@ -228,7 +239,7 @@ export async function fetchAnySessionDetail(sessionId: number) {
 // Exercise Catalog APIs
 // ==========================================
 
-export async function fetchExercisesList() {
+export async function fetchExercisesList(): Promise<Exercise[]> {
   return request('/admin/exercises');
 }
 
@@ -267,6 +278,22 @@ export async function deleteExercise(exerciseId: number) {
   return request(`/admin/exercises/${exerciseId}`, {
     method: 'DELETE',
   });
+}
+
+export async function fetchAdminProfile(): Promise<AdminProfile> {
+  return request('/auth/admin/profile');
+}
+
+export async function fetchMotionReports(
+  patientId?: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<MotionSession[]> {
+  let path = `/admin/sessions?limit=${limit}&offset=${offset}`;
+  if (patientId) {
+    path += `&patient_id=${encodeURIComponent(patientId)}`;
+  }
+  return request(path);
 }
 
 // ==========================================
