@@ -44,7 +44,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           patientId = patientData.patient_id;
           gender = patientData.gender;
         } catch (patientErr) {
-          console.warn('Failed to load patient sub-profile:', patientErr);
+          console.warn('Failed to load patient sub-profile, self-healing via sync...', patientErr);
+          try {
+            const userMetadata = sessionUser.user_metadata || {};
+            await syncUserWithBackend({
+              id: sessionUser.id,
+              email: sessionUser.email || '',
+              role: userMetadata.role || 'patient',
+              first_name: userMetadata.first_name || '',
+              last_name: userMetadata.last_name || '',
+            });
+            const patientData = await fetchPatientProfile();
+            patientId = patientData.patient_id;
+            gender = patientData.gender;
+          } catch (syncErr) {
+            console.error('Failed to self-heal patient profile:', syncErr);
+          }
         }
       }
 
@@ -117,7 +132,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     lastName?: string
   ) => {
     setLoading(true);
-    const mockId = `mock-uuid-${role}-demo`;
+    const mockId = role === 'admin'
+      ? '00000000-0000-0000-0000-000000000002'
+      : '00000000-0000-0000-0000-000000000001';
     const mockUser = {
       id: mockId,
       email,
@@ -165,7 +182,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const parsedUser = JSON.parse(savedMockUser) as User;
         
         // Self-heal: clear non-static legacy mock IDs to switch to static ones
-        if (parsedUser.id && !parsedUser.id.endsWith('-demo')) {
+        const isLegacyMock = parsedUser.id && !parsedUser.id.endsWith('-demo') && 
+          parsedUser.id !== '00000000-0000-0000-0000-000000000001' && 
+          parsedUser.id !== '00000000-0000-0000-0000-000000000002';
+        if (isLegacyMock) {
           localStorage.removeItem('chosen_motion_mock_user');
         } else {
           setUser(parsedUser);
@@ -237,6 +257,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Supabase signout failed', err);
       }
     }
+    // Clear all storage to prevent any stale cache or tokens
+    localStorage.clear();
+    sessionStorage.clear();
+
     setUser(null);
     setProfile(null);
     setLoading(false);

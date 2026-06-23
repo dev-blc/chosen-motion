@@ -158,6 +158,18 @@ class MotionSession(Base):
         return 0.0
 
     @property
+    def speed(self) -> float:
+        if self.metrics and len(self.metrics) > 0:
+            return self.metrics[0].speed if self.metrics[0].speed is not None else 0.0
+        return 0.0
+
+    @property
+    def symmetry(self) -> float:
+        if self.metrics and len(self.metrics) > 0:
+            return self.metrics[0].symmetry if self.metrics[0].symmetry is not None else 0.0
+        return 0.0
+
+    @property
     def metrics_summary(self) -> dict:
         if self.metrics and len(self.metrics) > 0:
             m = self.metrics[0]
@@ -192,6 +204,7 @@ class MotionMetric(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[int] = mapped_column(Integer, ForeignKey("motion_sessions.id", ondelete="CASCADE"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(50), ForeignKey("patients.patient_id", ondelete="CASCADE"), nullable=False)
     rom: Mapped[Optional[float]] = mapped_column(Float) # Range of Motion
     speed: Mapped[Optional[float]] = mapped_column(Float)
     symmetry: Mapped[Optional[float]] = mapped_column(Float)

@@ -30,13 +30,18 @@ def generate_patient_id(db: Session) -> str:
     if "sqlite" in str(db.bind.url):
         # SQLite fallback for testing
         max_id_row = db.execute(text("SELECT patient_id FROM patients ORDER BY patient_id DESC LIMIT 1")).first()
+        start_num = 1
         if max_id_row and max_id_row[0]:
             try:
-                num = int(max_id_row[0].replace("PAT-", ""))
-                return f"PAT-{num + 1:06d}"
+                start_num = int(max_id_row[0].replace("PAT-", "")) + 1
             except ValueError:
                 pass
-        return "PAT-000001"
+        while True:
+            candidate = f"PAT-{start_num:06d}"
+            exists = db.query(Patient).filter(Patient.patient_id == candidate).first()
+            if not exists:
+                return candidate
+            start_num += 1
     else:
         # PostgreSQL sequence
         try:
@@ -44,20 +49,29 @@ def generate_patient_id(db: Session) -> str:
             db.commit()
         except Exception:
             pass
-        next_val = db.execute(text("SELECT nextval('patient_id_seq')")).scalar()
-        return f"PAT-{next_val:06d}"
+        while True:
+            next_val = db.execute(text("SELECT nextval('patient_id_seq')")).scalar()
+            candidate = f"PAT-{next_val:06d}"
+            exists = db.query(Patient).filter(Patient.patient_id == candidate).first()
+            if not exists:
+                return candidate
 
 def generate_admin_id(db: Session) -> str:
     if "sqlite" in str(db.bind.url):
         # SQLite fallback for testing
         max_id_row = db.execute(text("SELECT admin_id FROM admins ORDER BY admin_id DESC LIMIT 1")).first()
+        start_num = 1
         if max_id_row and max_id_row[0]:
             try:
-                num = int(max_id_row[0].replace("ADM-", ""))
-                return f"ADM-{num + 1:06d}"
+                start_num = int(max_id_row[0].replace("ADM-", "")) + 1
             except ValueError:
                 pass
-        return "ADM-000001"
+        while True:
+            candidate = f"ADM-{start_num:06d}"
+            exists = db.query(Admin).filter(Admin.admin_id == candidate).first()
+            if not exists:
+                return candidate
+            start_num += 1
     else:
         # PostgreSQL sequence
         try:
@@ -65,8 +79,12 @@ def generate_admin_id(db: Session) -> str:
             db.commit()
         except Exception:
             pass
-        next_val = db.execute(text("SELECT nextval('admin_id_seq')")).scalar()
-        return f"ADM-{next_val:06d}"
+        while True:
+            next_val = db.execute(text("SELECT nextval('admin_id_seq')")).scalar()
+            candidate = f"ADM-{next_val:06d}"
+            exists = db.query(Admin).filter(Admin.admin_id == candidate).first()
+            if not exists:
+                return candidate
 
 @router.get("/me", response_model=UserResponse)
 def get_my_profile(
@@ -76,7 +94,11 @@ def get_my_profile(
     """
     Get current logged in user's profile from local database.
     """
-    db_user = db.query(User).filter(User.auth_user_id == current_user.id).first()
+    try:
+        current_user_uuid = uuid.UUID(str(current_user.id))
+    except (ValueError, TypeError):
+        current_user_uuid = current_user.id
+    db_user = db.query(User).filter(User.auth_user_id == current_user_uuid).first()
     if not db_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -94,14 +116,26 @@ def sync_user(
     Sync Supabase Auth user record into local PostgreSQL database.
     Creates Patient or Admin sub-profile records depending on user role.
     """
-    if str(current_user.id) != str(user_data.auth_user_id):
+    resolved_id = user_data.auth_user_id or user_data.id
+    if not resolved_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Missing auth_user_id or id in request."
+        )
+
+    if str(current_user.id) != str(resolved_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot sync profiles for other users."
         )
 
+    try:
+        resolved_uuid = uuid.UUID(str(resolved_id))
+    except (ValueError, TypeError):
+        resolved_uuid = resolved_id
+
     # Check if user already exists
-    db_user = db.query(User).filter(User.auth_user_id == user_data.auth_user_id).first()
+    db_user = db.query(User).filter(User.auth_user_id == resolved_uuid).first()
     if db_user:
         db_user.role = user_data.role
         db.commit()
@@ -110,7 +144,7 @@ def sync_user(
 
     # Create new User
     new_user = User(
-        auth_user_id=user_data.auth_user_id,
+        auth_user_id=resolved_uuid,
         email=user_data.email,
         role=user_data.role
     )
@@ -157,6 +191,14 @@ def sign_up_user(
     """
     Idempotently sign up a new user (admin or patient) through Supabase Auth and create a PostgreSQL profile.
     """
+    # Verify email is not already taken in local Postgres DB
+    existing_user = db.query(User).filter(User.email == req.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A user with this email address already exists."
+        )
+
     auth_url = get_supabase_auth_url()
     headers = {
         "apikey": settings.SUPABASE_ANON_KEY,

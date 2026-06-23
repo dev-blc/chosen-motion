@@ -20,7 +20,8 @@ class UserBase(BaseModel):
     role: str = "patient"
 
 class UserCreate(UserBase):
-    auth_user_id: uuid.UUID
+    auth_user_id: Optional[uuid.UUID] = None
+    id: Optional[uuid.UUID] = None
 
 class UserUpdate(BaseModel):
     role: Optional[str] = None

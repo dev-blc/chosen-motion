@@ -143,22 +143,10 @@ const PatientDashboard: React.FC = () => {
         setSessions(sessionsData);
         setAssignments(assignmentsData);
       } catch (err) {
-        console.error('Failed to load patient data. Falling back to local mock.', err);
-        setClinicalProfile({
-          diagnosis: 'Rotator Cuff Tear Rehabilitation & Knee Mobility Extensions',
-          assigned_admin: { user: { first_name: 'David', last_name: 'Carter' } }
-        });
-        setSessions([
-          { id: 1, title: 'Shoulder Abduction', created_at: new Date(Date.now() - 3 * 86400000).toISOString(), avg_score: 92, range_of_motion: 115, duration_seconds: 120 },
-          { id: 2, title: 'Elbow Flexion', created_at: new Date(Date.now() - 2 * 86400000).toISOString(), avg_score: 87, range_of_motion: 130, duration_seconds: 150 },
-          { id: 3, title: 'Shoulder Abduction', created_at: new Date(Date.now() - 86400000).toISOString(), avg_score: 95, range_of_motion: 122, duration_seconds: 180 },
-          { id: 4, title: 'Knee Extension', created_at: new Date().toISOString(), avg_score: 89, range_of_motion: 85, duration_seconds: 200 }
-        ]);
-        setAssignments([
-          { id: 1, is_completed: false, due_date: new Date().toISOString().split('T')[0], exercise: { name: 'Shoulder Abduction', description: 'Raise arm sideways to measure shoulder flexibility.', instructions: 'Stand straight, lift arm slowly to the side, keep elbow straight, repeat.', target_rom: 120, thumbnail_url: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=150', target_joints: { list: ['Shoulder R'] } } },
-          { id: 2, is_completed: false, due_date: new Date(Date.now() + 86400000).toISOString().split('T')[0], exercise: { name: 'Elbow Flexion', description: 'Bend arm at the elbow to test range of motion.', instructions: 'Hold weights, lift forearm upwards, bend elbow fully, return to start.', target_rom: 135, thumbnail_url: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?q=80&w=150', target_joints: { list: ['Elbow R'] } } },
-          { id: 3, is_completed: true, due_date: new Date(Date.now() - 86400000).toISOString().split('T')[0], exercise: { name: 'Knee Extension', description: 'Straighten leg from sitting position to trace knee angles.', instructions: 'Sit on a chair, slowly lift leg straight out, hold, return.', target_rom: 90, thumbnail_url: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?q=80&w=150', target_joints: { list: ['Knee R'] } } }
-        ]);
+        console.error('Failed to load patient data:', err);
+        setClinicalProfile(null);
+        setSessions([]);
+        setAssignments([]);
       } finally {
         setLoading(false);
       }

@@ -1,3 +1,4 @@
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
@@ -15,6 +16,12 @@ from app.schemas.schemas import (
 
 router = APIRouter()
 
+def get_user_uuid(user_id: str):
+    try:
+        return uuid.UUID(str(user_id))
+    except (ValueError, TypeError):
+        return user_id
+
 @router.get("/profile", response_model=PatientResponse)
 def get_patient_profile(
     current_user: UserPayload = Depends(require_patient),
@@ -23,7 +30,7 @@ def get_patient_profile(
     """
     Get the current patient's clinical profile.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == current_user.id).first()
+    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -40,7 +47,7 @@ def update_patient_profile(
     """
     Update the current patient's medical metadata.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == current_user.id).first()
+    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -81,7 +88,7 @@ def get_patient_by_id(
         )
     
     # Restrict: Patient can only view their own profile, Clinician/Admin can view all
-    if current_user.role.lower() != "admin" and patient.auth_user_id != current_user.id:
+    if current_user.role.lower() != "admin" and str(patient.auth_user_id) != str(current_user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. You do not have permission to view this profile."
@@ -99,7 +106,7 @@ def upload_motion_session(
     Upload a completed motion tracking session, complete with coordinate streams.
     """
     # Verify patient exists
-    patient = db.query(Patient).filter(Patient.auth_user_id == current_user.id).first()
+    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -178,6 +185,7 @@ def upload_motion_session(
 
     db_metric = MotionMetric(
         session_id=db_session.id,
+        patient_id=patient.patient_id,
         rom=rom,
         speed=speed,
         symmetry=symmetry,
@@ -201,7 +209,7 @@ def list_my_sessions(
     """
     List all motion tracking sessions recorded by the authenticated patient.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == current_user.id).first()
+    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
     if not patient:
         return []
     
@@ -217,7 +225,7 @@ def get_session_detail(
     """
     Get detailed telemetry metrics and coordinates for a specific recording session.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == current_user.id).first()
+    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -243,7 +251,7 @@ def list_my_assignments(
     """
     List all exercise assignments assigned to the authenticated patient.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == current_user.id).first()
+    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
     if not patient:
         return []
 
