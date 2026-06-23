@@ -1,4 +1,6 @@
 import jwt
+from functools import lru_cache
+from jwt import PyJWKClient
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
@@ -6,6 +8,53 @@ from typing import Optional
 from app.core.config import settings
 
 security = HTTPBearer()
+
+
+def _get_supabase_base_url() -> str:
+    url = settings.SUPABASE_URL.strip().rstrip("/")
+    if url.endswith("/rest/v1"):
+        url = url[: -len("/rest/v1")]
+    return url
+
+
+@lru_cache(maxsize=1)
+def _get_jwks_client() -> PyJWKClient:
+    jwks_url = f"{_get_supabase_base_url()}/auth/v1/.well-known/jwks.json"
+    return PyJWKClient(jwks_url, cache_keys=True)
+
+
+def _decode_supabase_token(token: str) -> dict:
+    bypass_signature = (
+        settings.ENVIRONMENT == "development"
+        and (
+            not settings.SUPABASE_JWT_SECRET
+            or settings.SUPABASE_JWT_SECRET == "your-supabase-jwt-secret-from-dashboard"
+        )
+    )
+
+    if bypass_signature:
+        return jwt.decode(token, options={"verify_signature": False, "verify_aud": False})
+
+    alg = jwt.get_unverified_header(token).get("alg", "")
+
+    if alg == "HS256":
+        return jwt.decode(
+            token,
+            settings.SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+
+    if alg in ("RS256", "ES256"):
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=[alg],
+            audience="authenticated",
+        )
+
+    raise jwt.InvalidTokenError(f"Unsupported JWT algorithm: {alg}")
 
 class UserPayload(BaseModel):
     id: str
@@ -51,18 +100,7 @@ def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Depends(secu
             )
 
     try:
-        # 2. Check if we should bypass signature check during local dev setup
-        bypass_signature = (
-            settings.ENVIRONMENT == "development" 
-            and (not settings.SUPABASE_JWT_SECRET or settings.SUPABASE_JWT_SECRET == "your-supabase-jwt-secret-from-dashboard")
-        )
-        
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_signature": not bypass_signature, "verify_aud": False}
-        )
+        payload = _decode_supabase_token(token)
         
         user_id = payload.get("sub")
         email = payload.get("email")

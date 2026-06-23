@@ -18,6 +18,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-Wait, let's look at the instruction. The builder stage was good but sometimes standard python slim is fine too. The above Dockerfile is simple and robust. Let's save it.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
