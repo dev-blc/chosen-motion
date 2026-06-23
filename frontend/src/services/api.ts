@@ -280,6 +280,36 @@ export async function deleteExercise(exerciseId: number) {
   });
 }
 
+export async function assignExerciseToPatient(
+  patientId: string,
+  data: { exercise_id: number; due_date?: string }
+) {
+  return request(`/admin/patients/${patientId}/assignments`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function removeExerciseAssignment(
+  patientId: string,
+  assignmentId: number
+) {
+  return request(`/admin/patients/${patientId}/assignments/${assignmentId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function updateExerciseAssignment(
+  patientId: string,
+  assignmentId: number,
+  data: { due_date?: string; is_completed?: boolean }
+) {
+  return request(`/admin/patients/${patientId}/assignments/${assignmentId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function fetchAdminProfile(): Promise<AdminProfile> {
   return request('/auth/admin/profile');
 }

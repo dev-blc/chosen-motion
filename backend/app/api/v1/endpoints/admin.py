@@ -21,7 +21,10 @@ from app.schemas.schemas import (
     ExerciseResponse,
     ExerciseCreateAdmin,
     ExerciseUpdateAdmin,
-    SessionResponse
+    SessionResponse,
+    ExerciseAssignmentCreate,
+    ExerciseAssignmentUpdate,
+    ExerciseAssignmentResponse,
 )
 
 router = APIRouter()
@@ -267,6 +270,166 @@ def edit_patient(
     db.commit()
     db.refresh(patient)
     return patient
+
+# ==========================================
+# Exercise Assignment Endpoints
+# ==========================================
+
+@router.post(
+    "/patients/{patient_id}/assignments",
+    response_model=ExerciseAssignmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def assign_exercise_to_patient(
+    patient_id: str,
+    assignment_data: ExerciseAssignmentCreate,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Assign an exercise from the catalog to a patient.
+    """
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found.",
+        )
+
+    exercise = db.query(Exercise).filter(Exercise.id == assignment_data.exercise_id).first()
+    if not exercise:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Exercise not found in catalog.",
+        )
+
+    existing = (
+        db.query(ExerciseAssignment)
+        .filter(
+            ExerciseAssignment.patient_id == patient.patient_id,
+            ExerciseAssignment.exercise_id == assignment_data.exercise_id,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Exercise '{exercise.name}' is already assigned to this patient.",
+        )
+
+    new_assignment = ExerciseAssignment(
+        patient_id=patient.patient_id,
+        exercise_id=assignment_data.exercise_id,
+        assigned_by=current_user.email,
+        due_date=assignment_data.due_date,
+        is_completed=False,
+    )
+    db.add(new_assignment)
+    db.commit()
+    db.refresh(new_assignment)
+
+    assignment = (
+        db.query(ExerciseAssignment)
+        .filter(ExerciseAssignment.id == new_assignment.id)
+        .options(*assignment_load_options())
+        .first()
+    )
+    return assignment
+
+
+@router.delete(
+    "/patients/{patient_id}/assignments/{assignment_id}",
+    response_model=MessageResponse,
+)
+def remove_exercise_assignment(
+    patient_id: str,
+    assignment_id: int,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Remove an exercise assignment from a patient.
+    """
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found.",
+        )
+
+    assignment = (
+        db.query(ExerciseAssignment)
+        .filter(
+            ExerciseAssignment.id == assignment_id,
+            ExerciseAssignment.patient_id == patient.patient_id,
+        )
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found for this patient.",
+        )
+
+    exercise_name = assignment.exercise.name if assignment.exercise else "Exercise"
+    db.delete(assignment)
+    db.commit()
+    return MessageResponse(
+        message=f"Assignment for '{exercise_name}' has been removed from the patient."
+    )
+
+
+@router.put(
+    "/patients/{patient_id}/assignments/{assignment_id}",
+    response_model=ExerciseAssignmentResponse,
+)
+def update_exercise_assignment(
+    patient_id: str,
+    assignment_id: int,
+    update_data: ExerciseAssignmentUpdate,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Update an exercise assignment (due date or completion status).
+    """
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found.",
+        )
+
+    assignment = (
+        db.query(ExerciseAssignment)
+        .filter(
+            ExerciseAssignment.id == assignment_id,
+            ExerciseAssignment.patient_id == patient.patient_id,
+        )
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found for this patient.",
+        )
+
+    if update_data.due_date is not None:
+        assignment.due_date = update_data.due_date
+    if update_data.is_completed is not None:
+        assignment.is_completed = update_data.is_completed
+
+    db.commit()
+    db.refresh(assignment)
+
+    assignment = (
+        db.query(ExerciseAssignment)
+        .filter(ExerciseAssignment.id == assignment.id)
+        .options(*assignment_load_options())
+        .first()
+    )
+    return assignment
+
 
 @router.delete("/patients/{patient_id}", response_model=MessageResponse)
 def archive_patient(

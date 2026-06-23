@@ -202,7 +202,15 @@ class ExerciseUpdateAdmin(BaseModel):
     thumbnail_url: Optional[str] = None
     target_joints: Optional[Dict[str, Any]] = None
 
-# Exercise Assignment Response
+# Exercise Assignment Schemas
+class ExerciseAssignmentCreate(BaseModel):
+    exercise_id: int
+    due_date: Optional[date] = None
+
+class ExerciseAssignmentUpdate(BaseModel):
+    due_date: Optional[date] = None
+    is_completed: Optional[bool] = None
+
 class ExerciseAssignmentResponse(BaseModel):
     id: int
     patient_id: str

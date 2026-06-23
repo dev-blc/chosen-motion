@@ -13,7 +13,9 @@ import {
   fetchAdminProfile,
   createExercise,
   updateExercise,
-  deleteExercise
+  deleteExercise,
+  assignExerciseToPatient,
+  removeExerciseAssignment,
 } from '@/services/api';
 import type {
   DashboardStats,
@@ -50,7 +52,8 @@ import {
   X,
   ClipboardList,
   Archive,
-  Edit2
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 
 type Section = 'dashboard' | 'patients' | 'exercises' | 'reports' | 'analytics' | 'content' | 'settings';
@@ -119,6 +122,13 @@ const AdminDashboard: React.FC = () => {
   // System Settings state
   const [enableAlerts, setEnableAlerts] = useState(true);
   const [requireConsent, setRequireConsent] = useState(true);
+
+  // Assign Exercise modal state
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [selectedExerciseToAssign, setSelectedExerciseToAssign] = useState<number | ''>('');
+  const [assignDueDate, setAssignDueDate] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [removingAssignmentId, setRemovingAssignmentId] = useState<number | null>(null);
 
   // Load patient list, exercises and stats
   const loadPatientsAndStats = async (search = '', incArchived = false) => {
@@ -311,6 +321,62 @@ const AdminDashboard: React.FC = () => {
       setPatients(prev => prev.map(p => patientApiId(p) === patientId ? { ...p, is_archived: true } : p));
     }
   };
+
+  const getAssignmentProgress = (exerciseId: number) => {
+    if (!patientDetail?.sessions) return { count: 0, latestScore: null as number | null };
+    const matching = patientDetail.sessions.filter((s) => s.exercise_id === exerciseId);
+    const latest = matching[0];
+    return {
+      count: matching.length,
+      latestScore: latest ? sessionFormScore(latest) : null,
+    };
+  };
+
+  const handleAssignExercise = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPatientId || !selectedExerciseToAssign) return;
+    setAssigning(true);
+    try {
+      const assignment = await assignExerciseToPatient(selectedPatientId, {
+        exercise_id: Number(selectedExerciseToAssign),
+        due_date: assignDueDate || undefined,
+      });
+      setPatientDetail((prev) =>
+        prev ? { ...prev, assignments: [...(prev.assignments || []), assignment] } : prev
+      );
+      setAssignModalOpen(false);
+      setSelectedExerciseToAssign('');
+      setAssignDueDate('');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error assigning exercise.';
+      alert(message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleRemoveAssignment = async (assignmentId: number) => {
+    if (!selectedPatientId) return;
+    if (!confirm('Remove this exercise assignment from the patient?')) return;
+    setRemovingAssignmentId(assignmentId);
+    try {
+      await removeExerciseAssignment(selectedPatientId, assignmentId);
+      setPatientDetail((prev) =>
+        prev
+          ? { ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId) }
+          : prev
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error removing assignment.';
+      alert(message);
+    } finally {
+      setRemovingAssignmentId(null);
+    }
+  };
+
+  const availableExercisesToAssign = exercisesList.filter(
+    (ex) => !patientDetail?.assignments?.some((a) => a.exercise_id === ex.id)
+  );
 
   // Create exercise submit
   const handleCreateExercise = async (e: React.FormEvent) => {
@@ -846,18 +912,54 @@ const AdminDashboard: React.FC = () => {
 
                       {/* Assigned exercises */}
                       <div className="space-y-2">
-                        <span className="text-2xs text-slate-400 uppercase font-bold block">Assigned Exercises</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-2xs text-slate-400 uppercase font-bold block">Assigned Exercises</span>
+                          {patientDetail && (
+                            <button
+                              onClick={() => setAssignModalOpen(true)}
+                              disabled={availableExercisesToAssign.length === 0}
+                              className="text-[10px] font-bold text-primary-500 hover:text-primary-600 disabled:text-slate-300 disabled:cursor-not-allowed flex items-center gap-1"
+                            >
+                              <Plus className="h-3 w-3" /> Assign
+                            </button>
+                          )}
+                        </div>
                         {patientDetail.assignments?.length === 0 ? (
                           <span className="text-xs text-slate-500 block">No exercises assigned yet.</span>
                         ) : (
-                          patientDetail.assignments.map((a) => (
-                            <div key={a.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-100/50 dark:border-slate-800/20 text-xs">
-                              <span className="font-medium text-slate-700 dark:text-slate-300">{a.exercise?.name || 'Workout'}</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${a.is_completed ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600'}`}>
-                                {a.is_completed ? 'Completed' : 'Pending'}
-                              </span>
-                            </div>
-                          ))
+                          patientDetail.assignments.map((a) => {
+                            const progress = getAssignmentProgress(a.exercise_id);
+                            return (
+                              <div key={a.id} className="bg-slate-50 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-100/50 dark:border-slate-800/20 text-xs space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                  <span className="font-medium text-slate-700 dark:text-slate-300">{a.exercise?.name || 'Workout'}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${progress.count > 0 ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600'}`}>
+                                      {progress.count > 0 ? `${progress.count} session${progress.count !== 1 ? 's' : ''}` : 'Not started'}
+                                    </span>
+                                    <button
+                                      onClick={() => handleRemoveAssignment(a.id)}
+                                      disabled={removingAssignmentId === a.id}
+                                      className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded transition-all disabled:opacity-50"
+                                      title="Remove assignment"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                                {progress.latestScore !== null && (
+                                  <span className="text-2xs text-slate-400 block">
+                                    Latest form score: <span className="font-bold text-accent-500">{progress.latestScore}%</span>
+                                  </span>
+                                )}
+                                {a.due_date && (
+                                  <span className="text-2xs text-slate-400 block">
+                                    Due: {new Date(a.due_date).toLocaleDateString()}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })
                         )}
                       </div>
 
@@ -1039,6 +1141,57 @@ const AdminDashboard: React.FC = () => {
                         className="w-full btn-primary py-3 mt-2"
                       >
                         {updating ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal: Assign Exercise */}
+              {assignModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+                  <div className="w-full max-w-md glass-card p-8 relative space-y-6">
+                    <button onClick={() => setAssignModalOpen(false)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600">
+                      <X className="h-5 w-5" />
+                    </button>
+                    <div>
+                      <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">Assign Exercise</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Select an exercise from the catalog to assign to {patientDetail?.full_name}.
+                      </p>
+                    </div>
+                    <form onSubmit={handleAssignExercise} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Exercise</label>
+                        <select
+                          required
+                          className="input-field text-sm"
+                          value={selectedExerciseToAssign}
+                          onChange={(e) => setSelectedExerciseToAssign(e.target.value ? Number(e.target.value) : '')}
+                        >
+                          <option value="">Select an exercise...</option>
+                          {availableExercisesToAssign.map((ex) => (
+                            <option key={ex.id} value={ex.id}>
+                              {ex.name} (ROM: {ex.target_rom || 120}°)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Due Date (optional)</label>
+                        <input
+                          type="date"
+                          className="input-field text-sm"
+                          value={assignDueDate}
+                          onChange={(e) => setAssignDueDate(e.target.value)}
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={assigning || !selectedExerciseToAssign}
+                        className="w-full btn-primary py-3 mt-2"
+                      >
+                        {assigning ? 'Assigning...' : 'Assign Exercise'}
                       </button>
                     </form>
                   </div>
