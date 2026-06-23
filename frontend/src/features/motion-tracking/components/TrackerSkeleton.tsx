@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSession } from '@/services/api';
 import MotionTracking from './MotionTracking';
+import SkeletonMiniViewer from './SkeletonMiniViewer';
 import { PoseBuffer, calculateAngle } from '../utils/poseProcessor';
 import { 
   ArrowLeft, 
@@ -79,6 +80,22 @@ const TrackerSkeleton: React.FC = () => {
   const poseBuffer = useRef<PoseBuffer>(new PoseBuffer());
   const lastLandmarks = useRef<any>(null);
   const repState = useRef<'flexed' | 'extended'>('extended');
+  const prevRepsRef = useRef(0);
+
+  // Announce rep count via browser text-to-speech
+  useEffect(() => {
+    if (!active || reps <= prevRepsRef.current) {
+      prevRepsRef.current = reps;
+      return;
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(String(reps));
+      utterance.rate = 1.1;
+      window.speechSynthesis.speak(utterance);
+    }
+    prevRepsRef.current = reps;
+  }, [reps, active]);
 
   // calculateJointAngle is imported from poseProcessor.ts
 
@@ -365,6 +382,8 @@ const TrackerSkeleton: React.FC = () => {
     setLiveStatus('idle');
     frameCounterRef.current = 0;
     squatSessionIdRef.current = null;
+    prevRepsRef.current = 0;
+    repState.current = 'extended';
 
     if (exerciseName.toLowerCase().includes('squat')) {
       try {
@@ -449,6 +468,8 @@ const TrackerSkeleton: React.FC = () => {
     lastLandmarks.current = null;
     frameCounterRef.current = 0;
     squatSessionIdRef.current = null;
+    prevRepsRef.current = 0;
+    repState.current = 'extended';
   };
 
 
@@ -547,6 +568,15 @@ const TrackerSkeleton: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Mini skeleton viewer overlay */}
+          <div className="absolute bottom-6 left-6 z-30">
+            <SkeletonMiniViewer
+              landmarksRef={lastLandmarks}
+              active={active}
+              mirror={mirror}
+            />
+          </div>
 
           {/* Overlaid UI action controls */}
           <div className="absolute bottom-6 right-6 z-20 flex items-center gap-3">

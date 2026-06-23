@@ -505,7 +505,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
 
       {/* Real-time mirror tag indicator */}
       {isActive && cameraPermission === true && (
-        <span className="absolute bottom-6 left-6 z-20 flex items-center gap-2 text-[10px] font-semibold bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80 backdrop-blur-sm text-slate-300">
+        <span className="absolute top-4 left-4 z-20 flex items-center gap-2 text-[10px] font-semibold bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80 backdrop-blur-sm text-slate-300">
           <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
           Capture Live {mirror ? '| Mirrored' : ''}
         </span>
