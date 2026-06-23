@@ -4,14 +4,14 @@ import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSessi
 import MotionTracking from './MotionTracking';
 import SkeletonMiniViewer from './SkeletonMiniViewer';
 import { PoseBuffer, calculateAngle } from '../utils/poseProcessor';
-import { ClapDetector } from '../utils/clapDetector';
+import { ThumbsUpDetector } from '../utils/thumbsUpDetector';
 import { 
   ArrowLeft, 
   Activity, 
   Square,
   RefreshCw,
   AlertCircle,
-  HandMetal
+  ThumbsUp
 } from 'lucide-react';
 
 const TrackerSkeleton: React.FC = () => {
@@ -21,7 +21,9 @@ const TrackerSkeleton: React.FC = () => {
   
   const [active, setActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [clapStatus, setClapStatus] = useState<'waiting_start' | 'workout_active' | 'clap_detected'>('waiting_start');
+  const [gestureStatus, setGestureStatus] = useState<'waiting' | 'holding' | 'countdown' | 'active'>('waiting');
+  const [gestureHoldProgress, setGestureHoldProgress] = useState(0);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const [mirror, setMirror] = useState(true);
   const [duration, setDuration] = useState(0);
   const [reps, setReps] = useState(0);
@@ -83,11 +85,21 @@ const TrackerSkeleton: React.FC = () => {
   const lastLandmarks = useRef<any>(null);
   const repState = useRef<'flexed' | 'extended'>('extended');
   const prevRepsRef = useRef(0);
-  const clapDetector = useRef<ClapDetector>(new ClapDetector());
-  const clapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const thumbsUpDetector = useRef<ThumbsUpDetector>(new ThumbsUpDetector());
+  const gestureLockedRef = useRef(false);
+  const countdownActiveRef = useRef(false);
   const handleStopRef = useRef<() => Promise<void>>(async () => {});
   const handleStartRef = useRef<() => Promise<void>>(async () => {});
   const activeRef = useRef(false);
+
+  const speak = (text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.1;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   // Auto-enable camera calibration on page load
   useEffect(() => {
@@ -96,8 +108,29 @@ const TrackerSkeleton: React.FC = () => {
 
   useEffect(() => {
     activeRef.current = active;
-    setClapStatus(active ? 'workout_active' : 'waiting_start');
+    if (!countdownActiveRef.current) {
+      setGestureStatus(active ? 'active' : 'waiting');
+    }
   }, [active]);
+
+  // 3-2-1 countdown after thumbs-up detected
+  useEffect(() => {
+    if (countdown === null) return;
+
+    if (countdown === 0) {
+      setCountdown(null);
+      countdownActiveRef.current = false;
+      gestureLockedRef.current = false;
+      thumbsUpDetector.current.reset();
+      speak('Go!');
+      handleStartRef.current();
+      return;
+    }
+
+    speak(String(countdown));
+    const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   // Announce rep count via browser text-to-speech
   useEffect(() => {
@@ -121,27 +154,32 @@ const TrackerSkeleton: React.FC = () => {
     if (!landmarks || landmarks.length === 0) return;
     lastLandmarks.current = landmarks;
 
-    // Clap gesture detection for workout start/stop (always active when camera is on)
-    const clapResult = clapDetector.current.detect(landmarks);
-    if (clapResult.detected) {
-      const wasActive = activeRef.current;
-      setClapStatus('clap_detected');
-      if (clapFlashTimerRef.current) clearTimeout(clapFlashTimerRef.current);
-      clapFlashTimerRef.current = setTimeout(() => {
-        setClapStatus(activeRef.current ? 'workout_active' : 'waiting_start');
-      }, 1200);
+    // Thumbs-up gesture for workout start (with countdown) / stop
+    if (!gestureLockedRef.current && !saving) {
+      const thumbsResult = thumbsUpDetector.current.detect(landmarks);
+      setGestureHoldProgress(thumbsResult.holdProgress);
 
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(wasActive ? 'Workout stopped' : 'Workout started');
-        utterance.rate = 1.15;
-        window.speechSynthesis.speak(utterance);
+      if (thumbsResult.holding && !thumbsResult.detected) {
+        setGestureStatus(countdownActiveRef.current ? 'countdown' : (activeRef.current ? 'active' : 'holding'));
+      } else if (!thumbsResult.holding && !countdownActiveRef.current) {
+        setGestureStatus(activeRef.current ? 'active' : 'waiting');
+        setGestureHoldProgress(0);
       }
 
-      if (wasActive) {
-        handleStopRef.current();
-      } else {
-        handleStartRef.current();
+      if (thumbsResult.detected) {
+        if (activeRef.current) {
+          gestureLockedRef.current = true;
+          thumbsUpDetector.current.reset();
+          speak('Workout stopped');
+          handleStopRef.current();
+          setTimeout(() => { gestureLockedRef.current = false; }, 3000);
+        } else if (!countdownActiveRef.current) {
+          countdownActiveRef.current = true;
+          gestureLockedRef.current = true;
+          thumbsUpDetector.current.disarm();
+          setGestureStatus('countdown');
+          setCountdown(3);
+        }
       }
     }
     
@@ -436,7 +474,12 @@ const TrackerSkeleton: React.FC = () => {
     squatSessionIdRef.current = null;
     prevRepsRef.current = 0;
     repState.current = 'extended';
-    clapDetector.current.reset();
+    thumbsUpDetector.current.reset();
+    gestureLockedRef.current = false;
+    countdownActiveRef.current = false;
+    setCountdown(null);
+    setGestureStatus('active');
+    setGestureHoldProgress(0);
 
     if (exerciseName.toLowerCase().includes('squat')) {
       try {
@@ -525,8 +568,12 @@ const TrackerSkeleton: React.FC = () => {
     squatSessionIdRef.current = null;
     prevRepsRef.current = 0;
     repState.current = 'extended';
-    clapDetector.current.reset();
-    setClapStatus('waiting_start');
+    thumbsUpDetector.current.reset();
+    gestureLockedRef.current = false;
+    countdownActiveRef.current = false;
+    setCountdown(null);
+    setGestureStatus('waiting');
+    setGestureHoldProgress(0);
   };
 
 
@@ -564,23 +611,45 @@ const TrackerSkeleton: React.FC = () => {
             onCameraReady={setCameraReady}
           />
 
-          {/* Clap-to-start / clap-to-stop instruction overlay */}
-          {cameraReady && !saving && (
+          {/* Thumbs-up gesture instruction overlay */}
+          {cameraReady && !saving && countdown === null && (
             <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-20 px-5 py-3 rounded-2xl border backdrop-blur-md shadow-premium flex items-center gap-3 transition-all duration-300 ${
-              clapStatus === 'clap_detected'
+              gestureStatus === 'holding'
                 ? 'bg-accent-500/20 border-accent-400/50 text-accent-300'
                 : active
                   ? 'bg-red-950/60 border-red-500/30 text-red-300'
                   : 'bg-primary-950/60 border-primary-500/30 text-primary-300'
             }`}>
-              <HandMetal className={`h-5 w-5 ${clapStatus === 'clap_detected' ? 'animate-bounce' : ''}`} />
-              <span className="text-xs font-bold uppercase tracking-wider">
-                {clapStatus === 'clap_detected'
-                  ? (active ? 'Clap detected — stopping...' : 'Clap detected — starting workout!')
-                  : active
-                    ? 'Clap your hands to stop workout'
-                    : 'Clap your hands to start workout'}
-              </span>
+              <ThumbsUp className={`h-5 w-5 ${gestureStatus === 'holding' ? 'animate-bounce' : ''}`} />
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-bold uppercase tracking-wider">
+                  {active
+                    ? 'Hold thumbs up to stop workout'
+                    : gestureStatus === 'holding'
+                      ? 'Hold steady...'
+                      : 'Hold thumbs up to start'}
+                </span>
+                {gestureStatus === 'holding' && !active && (
+                  <div className="h-1 w-32 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent-400 transition-all duration-75"
+                      style={{ width: `${Math.round(gestureHoldProgress * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 3-2-1 countdown overlay */}
+          {countdown !== null && countdown > 0 && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">Get ready</span>
+                <span className="font-display font-bold text-8xl text-white animate-pulse drop-shadow-lg">
+                  {countdown}
+                </span>
+              </div>
             </div>
           )}
 
@@ -822,8 +891,8 @@ const TrackerSkeleton: React.FC = () => {
             <AlertCircle className="h-4.5 w-4.5 shrink-0 text-indigo-400" />
             <p>
               {exerciseName.toLowerCase().includes('squat')
-                ? "Stand sideways to the camera for best accuracy. Keep your back straight and lower your hips until thighs are parallel to the ground. Clap your hands at chest height to start and stop."
-                : "Camera calibrates automatically on load. Clap your hands together at chest height to start the workout, then clap again to stop. Ensure your target joint limb is fully visible. Rest immediately if you feel pain."
+                ? "Stand sideways to the camera for best accuracy. Hold a thumbs up to start — you'll get a 3-2-1 countdown. Thumbs up again to stop."
+                : "Camera calibrates automatically. Hold a thumbs up to start (3-2-1 countdown), then thumbs up again to stop. Keep your full body visible. Rest immediately if you feel pain."
               }
             </p>
           </div>
