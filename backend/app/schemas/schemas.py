@@ -34,7 +34,7 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True
 
-class AdminResponse(BaseModel):
+class AdminProfileResponse(BaseModel):
     id: uuid.UUID
     admin_id: str
     auth_user_id: uuid.UUID
@@ -60,7 +60,7 @@ class AdminUpdate(BaseModel):
     department: Optional[str] = None
     access_level: Optional[str] = None
 
-class AdminResponse(AdminBase):
+class AdminWithUserResponse(AdminBase):
     id: str
     user: UserResponse
 
@@ -100,7 +100,7 @@ class PatientUpdate(BaseModel):
 class PatientResponse(PatientBase):
     id: uuid.UUID
     patient_id: str
-    auth_user_id: str
+    auth_user_id: uuid.UUID
     email: EmailStr
     full_name: str
     phone: Optional[str] = None
@@ -202,7 +202,15 @@ class ExerciseUpdateAdmin(BaseModel):
     thumbnail_url: Optional[str] = None
     target_joints: Optional[Dict[str, Any]] = None
 
-# Exercise Assignment Response
+# Exercise Assignment Schemas
+class ExerciseAssignmentCreate(BaseModel):
+    exercise_id: int
+    due_date: Optional[date] = None
+
+class ExerciseAssignmentUpdate(BaseModel):
+    due_date: Optional[date] = None
+    is_completed: Optional[bool] = None
+
 class ExerciseAssignmentResponse(BaseModel):
     id: int
     patient_id: str
@@ -212,22 +220,6 @@ class ExerciseAssignmentResponse(BaseModel):
     due_date: Optional[date] = None
     is_completed: bool
     exercise: Optional[ExerciseResponse] = None
-
-    class Config:
-        from_attributes = True
-
-# Detailed Patient History Response
-class PatientDetailFullResponse(BaseModel):
-    user_id: str
-    email: str
-    full_name: str
-    date_of_birth: Optional[date] = None
-    phone: Optional[str] = None
-    diagnosis: Optional[str] = None
-    is_archived: bool
-    consents: List[ConsentResponse] = []
-    assignments: List[ExerciseAssignmentResponse] = []
-    sessions: List[SessionResponse] = []
 
     class Config:
         from_attributes = True
@@ -312,7 +304,27 @@ class SessionCreate(SessionBase):
 class SessionResponse(SessionBase):
     id: int
     patient_id: str
+    exercise_id: Optional[int] = None
+    score: Optional[float] = None
+    completed_at: Optional[datetime] = None
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Detailed Patient History Response
+class PatientDetailFullResponse(BaseModel):
+    patient_id: str
+    user_id: str
+    email: str
+    full_name: str
+    date_of_birth: Optional[date] = None
+    phone: Optional[str] = None
+    diagnosis: Optional[str] = None
+    is_archived: bool
+    consents: List[ConsentResponse] = []
+    assignments: List[ExerciseAssignmentResponse] = []
+    sessions: List[SessionResponse] = []
 
     class Config:
         from_attributes = True

@@ -1,10 +1,11 @@
-import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from app.core.database import get_db
 from app.core.security import get_current_user, UserPayload
 from app.models.models import MotionSession, MotionFrame, Patient
+from app.services.query_helpers import session_load_options
+from app.services.patient_resolver import resolve_patient_for_user
 from app.schemas.schemas import (
     SessionDetailResponse,
     SessionFramesResponse,
@@ -15,12 +16,6 @@ from app.schemas.schemas import (
 
 router = APIRouter()
 
-def get_user_uuid(user_id: str):
-    try:
-        return uuid.UUID(str(user_id))
-    except (ValueError, TypeError):
-        return user_id
-
 @router.get("/{session_id}", response_model=SessionDetailResponse)
 def get_session_detail(
     session_id: int,
@@ -30,7 +25,12 @@ def get_session_detail(
     """
     Get detailed telemetry metrics and coordinates for a specific recording session.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -39,7 +39,7 @@ def get_session_detail(
 
     # Authorization Check: Admin can view all, Patient can only view their own
     if current_user.role.lower() != "admin":
-        patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
+        patient = resolve_patient_for_user(current_user, db, link_auth=False)
         if not patient or patient.patient_id != session.patient_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -57,7 +57,12 @@ def get_session_frames(
     """
     Get all coordinate frames sorted by frame_number for skeleton replay.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -66,7 +71,7 @@ def get_session_frames(
 
     # Authorization Check
     if current_user.role.lower() != "admin":
-        patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
+        patient = resolve_patient_for_user(current_user, db, link_auth=False)
         if not patient or patient.patient_id != session.patient_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -90,7 +95,12 @@ def get_session_metrics(
     """
     Get metrics summary including ROM, speed, symmetry, smoothness, repetitions, and accuracy.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -99,7 +109,7 @@ def get_session_metrics(
 
     # Authorization Check
     if current_user.role.lower() != "admin":
-        patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
+        patient = resolve_patient_for_user(current_user, db, link_auth=False)
         if not patient or patient.patient_id != session.patient_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -117,7 +127,12 @@ def get_session_accuracy(
     """
     Get accuracy score and list of detected form errors.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -126,7 +141,7 @@ def get_session_accuracy(
 
     # Authorization Check
     if current_user.role.lower() != "admin":
-        patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
+        patient = resolve_patient_for_user(current_user, db, link_auth=False)
         if not patient or patient.patient_id != session.patient_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -154,7 +169,12 @@ def get_session_comparison(
     """
     Compare current session metrics against the patient's previous session for the same exercise.
     """
-    session = db.query(MotionSession).filter(MotionSession.id == session_id).first()
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -163,7 +183,7 @@ def get_session_comparison(
 
     # Authorization Check
     if current_user.role.lower() != "admin":
-        patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
+        patient = resolve_patient_for_user(current_user, db, link_auth=False)
         if not patient or patient.patient_id != session.patient_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

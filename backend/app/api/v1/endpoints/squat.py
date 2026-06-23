@@ -1,4 +1,3 @@
-import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
@@ -8,14 +7,9 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_patient, UserPayload
 from app.models.models import Patient, MotionSession, MotionFrame, MotionMetric, Exercise
 from app.services.exercise_engines import SquatEngine, EXERCISE_CONFIGS
+from app.services.patient_resolver import get_patient_for_user, resolve_patient_for_user
 
 router = APIRouter()
-
-def get_user_uuid(user_id: str):
-    try:
-        return uuid.UUID(str(user_id))
-    except (ValueError, TypeError):
-        return user_id
 
 # Pydantic Schemas for Requests/Responses
 class SquatStartResponse(BaseModel):
@@ -57,7 +51,7 @@ def verify_session_access(session_id: int, current_user: UserPayload, db: Sessio
 
     # Patient isolation check
     if current_user.role.lower() != "admin":
-        patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
+        patient = resolve_patient_for_user(current_user, db, link_auth=False)
         if not patient or patient.patient_id != session.patient_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -73,12 +67,7 @@ def start_squat_session(
     """
     Initialize a new Squat exercise tracking session.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient profile not found. Please sync your account."
-        )
+    patient = get_patient_for_user(current_user, db)
 
     # Squat exercise is ID 5
     exercise = db.query(Exercise).filter(Exercise.name == "Squat").first()

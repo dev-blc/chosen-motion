@@ -2,14 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSession } from '@/services/api';
 import MotionTracking from './MotionTracking';
-import { PoseBuffer, calculateAngle } from '../utils/poseProcessor';
+import SkeletonMiniViewer from './SkeletonMiniViewer';
+import { PoseBuffer, calculateAngle, computeFrameConfidence } from '../utils/poseProcessor';
+import { GestureTrigger } from '../utils/gestureTrigger';
 import { 
   ArrowLeft, 
   Activity, 
-  Play, 
   Square,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  ThumbsUp
 } from 'lucide-react';
 
 const TrackerSkeleton: React.FC = () => {
@@ -18,7 +20,12 @@ const TrackerSkeleton: React.FC = () => {
   const exerciseName = location.state?.exerciseName || 'Shoulder Abduction';
   
   const [active, setActive] = useState(false);
-  const [_cameraReady, setCameraReady] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [gestureStatus, setGestureStatus] = useState<'waiting' | 'holding' | 'countdown' | 'active'>('waiting');
+  const [gestureHoldProgress, setGestureHoldProgress] = useState(0);
+  const [detectedGestureLabel, setDetectedGestureLabel] = useState<string | null>(null);
+  const [detectedGestureScore, setDetectedGestureScore] = useState(0);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const [mirror, setMirror] = useState(true);
   const [duration, setDuration] = useState(0);
   const [reps, setReps] = useState(0);
@@ -79,8 +86,103 @@ const TrackerSkeleton: React.FC = () => {
   const poseBuffer = useRef<PoseBuffer>(new PoseBuffer());
   const lastLandmarks = useRef<any>(null);
   const repState = useRef<'flexed' | 'extended'>('extended');
+  const prevRepsRef = useRef(0);
+  const gestureTrigger = useRef<GestureTrigger>(new GestureTrigger());
+  const gestureLockedRef = useRef(false);
+  const countdownActiveRef = useRef(false);
+  const handleStopRef = useRef<() => Promise<void>>(async () => {});
+  const handleStartRef = useRef<() => Promise<void>>(async () => {});
+  const activeRef = useRef(false);
+
+  const speak = (text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.1;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  // Auto-enable camera calibration on page load
+  useEffect(() => {
+    setCameraReady(true);
+  }, []);
+
+  useEffect(() => {
+    activeRef.current = active;
+    if (!countdownActiveRef.current) {
+      setGestureStatus(active ? 'active' : 'waiting');
+    }
+  }, [active]);
+
+  // 3-2-1 countdown after thumbs-up detected
+  useEffect(() => {
+    if (countdown === null) return;
+
+    if (countdown === 0) {
+      setCountdown(null);
+      countdownActiveRef.current = false;
+      gestureLockedRef.current = false;
+      gestureTrigger.current.reset();
+      speak('Go!');
+      handleStartRef.current();
+      return;
+    }
+
+    speak(String(countdown));
+    const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  // Announce rep count via browser text-to-speech
+  useEffect(() => {
+    if (!active || reps <= prevRepsRef.current) {
+      prevRepsRef.current = reps;
+      return;
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(String(reps));
+      utterance.rate = 1.1;
+      window.speechSynthesis.speak(utterance);
+    }
+    prevRepsRef.current = reps;
+  }, [reps, active]);
 
   // calculateJointAngle is imported from poseProcessor.ts
+
+  // MediaPipe GestureRecognizer callback (pretrained Thumb_Up model)
+  const handleGestureDetected = (gestures: { gesture: string; score: number; handedness: string }[]) => {
+    if (gestureLockedRef.current || saving) return;
+
+    const result = gestureTrigger.current.process(gestures);
+    setGestureHoldProgress(result.holdProgress);
+    setDetectedGestureLabel(result.currentGesture);
+    setDetectedGestureScore(result.confidence);
+
+    if (result.holding && !result.detected) {
+      setGestureStatus(countdownActiveRef.current ? 'countdown' : (activeRef.current ? 'active' : 'holding'));
+    } else if (!result.holding && !countdownActiveRef.current) {
+      setGestureStatus(activeRef.current ? 'active' : 'waiting');
+      setGestureHoldProgress(0);
+    }
+
+    if (result.detected) {
+      if (activeRef.current) {
+        gestureLockedRef.current = true;
+        gestureTrigger.current.reset();
+        speak('Workout stopped');
+        handleStopRef.current();
+        setTimeout(() => { gestureLockedRef.current = false; }, 3000);
+      } else if (!countdownActiveRef.current) {
+        countdownActiveRef.current = true;
+        gestureLockedRef.current = true;
+        gestureTrigger.current.disarm();
+        setGestureStatus('countdown');
+        setCountdown(3);
+      }
+    }
+  };
 
   // Real-time landmarks coordinates feedback handler
   const handlePoseDetected = (landmarks: any) => {
@@ -118,42 +220,56 @@ const TrackerSkeleton: React.FC = () => {
     } else if (exerciseName.toLowerCase().includes('shoulder')) {
       calculatedRom = angles.shoulder_r;
       
-      // Rep counting: flexion (lifted > 95 deg), extension (lowered < 40 deg)
-      if (calculatedRom > 95 && repState.current === 'extended') {
-        repState.current = 'flexed';
-      } else if (calculatedRom < 40 && repState.current === 'flexed') {
-        repState.current = 'extended';
-        setReps(r => r + 1);
+      if (activeRef.current) {
+        // Rep counting: flexion (lifted > 95 deg), extension (lowered < 40 deg)
+        if (calculatedRom > 95 && repState.current === 'extended') {
+          repState.current = 'flexed';
+        } else if (calculatedRom < 40 && repState.current === 'flexed') {
+          repState.current = 'extended';
+          setReps(r => r + 1);
+        }
       }
-    } else if (exerciseName.toLowerCase().includes('knee')) {
-      calculatedRom = angles.knee_r;
+    } else if (exerciseName.toLowerCase().includes('knee') || exerciseName.toLowerCase().includes('lunge')) {
+      calculatedRom = Math.round((angles.knee_l + angles.knee_r) / 2);
       
-      // Rep counting: extension (straightened > 140 deg), flexion (bent < 90 deg)
-      if (calculatedRom > 140 && repState.current === 'flexed') {
-        repState.current = 'extended';
-        setReps(r => r + 1);
-      } else if (calculatedRom < 90 && repState.current === 'extended') {
-        repState.current = 'flexed';
+      if (activeRef.current) {
+        // Rep counting for knee/lunge: extension (> 150 deg), flexion (< 100 deg)
+        if (calculatedRom > 150 && repState.current === 'flexed') {
+          repState.current = 'extended';
+          setReps(r => r + 1);
+        } else if (calculatedRom < 100 && repState.current === 'extended') {
+          repState.current = 'flexed';
+        }
       }
+    } else if (exerciseName.toLowerCase().includes('hip')) {
+      calculatedRom = Math.round((angles.hip_l + angles.hip_r) / 2);
     } else {
       // Default: Elbow Flexion
       calculatedRom = angles.elbow_r;
       
-      // Rep counting: flexion (fully bent < 55 deg), extension (straightened > 130 deg)
-      if (calculatedRom < 55 && repState.current === 'extended') {
-        repState.current = 'flexed';
-      } else if (calculatedRom > 130 && repState.current === 'flexed') {
-        repState.current = 'extended';
-        setReps(r => r + 1);
+      if (activeRef.current) {
+        // Rep counting: flexion (fully bent < 55 deg), extension (straightened > 130 deg)
+        if (calculatedRom < 55 && repState.current === 'extended') {
+          repState.current = 'flexed';
+        } else if (calculatedRom > 130 && repState.current === 'flexed') {
+          repState.current = 'extended';
+          setReps(r => r + 1);
+        }
       }
     }
 
     setRom(calculatedRom);
 
+    const confidence = computeFrameConfidence(landmarks);
+    setScore(Math.round(confidence * 100));
+
+    // Skip coaching analysis when workout is not active
+    if (!activeRef.current) {
+      return;
+    }
+
     // Skip client-side coaching for Squats since backend handles it
     if (exerciseName.toLowerCase().includes('squat')) {
-      const confidence = landmarks.reduce((acc: number, l: any) => acc + (l.visibility || 0), 0) / landmarks.length;
-      setScore(Math.round(confidence * 100));
       return;
     }
 
@@ -250,9 +366,6 @@ const TrackerSkeleton: React.FC = () => {
       currentStatus = allRulesPassed ? 'success' : 'warning';
     }
     setLiveStatus(currentStatus);
-
-    const confidence = landmarks.reduce((acc: number, l: any) => acc + (l.visibility || 0), 0) / landmarks.length;
-    setScore(Math.round(confidence * 100));
   };
 
   // Duration timer simulation loop
@@ -365,6 +478,15 @@ const TrackerSkeleton: React.FC = () => {
     setLiveStatus('idle');
     frameCounterRef.current = 0;
     squatSessionIdRef.current = null;
+    prevRepsRef.current = 0;
+    repState.current = 'extended';
+    gestureTrigger.current.reset();
+    gestureLockedRef.current = false;
+    countdownActiveRef.current = false;
+    setCountdown(null);
+    setGestureStatus('active');
+    setGestureHoldProgress(0);
+    setDetectedGestureLabel(null);
 
     if (exerciseName.toLowerCase().includes('squat')) {
       try {
@@ -376,6 +498,7 @@ const TrackerSkeleton: React.FC = () => {
       }
     }
   };
+  handleStartRef.current = handleStart;
 
   const handleStop = async () => {
     setActive(false);
@@ -436,6 +559,7 @@ const TrackerSkeleton: React.FC = () => {
       setSaving(false);
     }
   };
+  handleStopRef.current = handleStop;
 
   const handleReset = () => {
     setActive(false);
@@ -449,6 +573,15 @@ const TrackerSkeleton: React.FC = () => {
     lastLandmarks.current = null;
     frameCounterRef.current = 0;
     squatSessionIdRef.current = null;
+    prevRepsRef.current = 0;
+    repState.current = 'extended';
+    gestureTrigger.current.reset();
+    gestureLockedRef.current = false;
+    countdownActiveRef.current = false;
+    setCountdown(null);
+    setGestureStatus('waiting');
+    setGestureHoldProgress(0);
+    setDetectedGestureLabel(null);
   };
 
 
@@ -480,11 +613,59 @@ const TrackerSkeleton: React.FC = () => {
         {/* Camera Tracking Component */}
         <div className="lg:col-span-3 relative flex flex-col rounded-3xl overflow-hidden min-h-[400px]">
           <MotionTracking
-            isActive={active}
+            cameraEnabled={cameraReady}
             mirror={mirror}
             onPoseDetected={handlePoseDetected}
+            onGestureDetected={handleGestureDetected}
             onCameraReady={setCameraReady}
           />
+
+          {/* Thumbs-up gesture instruction overlay */}
+          {cameraReady && !saving && countdown === null && (
+            <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-20 px-5 py-3 rounded-2xl border backdrop-blur-md shadow-premium flex items-center gap-3 transition-all duration-300 ${
+              gestureStatus === 'holding'
+                ? 'bg-accent-500/20 border-accent-400/50 text-accent-300'
+                : active
+                  ? 'bg-red-950/60 border-red-500/30 text-red-300'
+                  : 'bg-primary-950/60 border-primary-500/30 text-primary-300'
+            }`}>
+              <ThumbsUp className={`h-5 w-5 ${gestureStatus === 'holding' ? 'animate-bounce' : ''}`} />
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-bold uppercase tracking-wider">
+                  {active
+                    ? 'Hold thumbs up to stop workout'
+                    : gestureStatus === 'holding'
+                      ? 'Thumb up detected — hold steady...'
+                      : 'Show thumbs up to camera to start'}
+                </span>
+                {detectedGestureLabel && (
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    AI sees: {detectedGestureLabel.replace(/_/g, ' ')} ({Math.round(detectedGestureScore * 100)}%)
+                  </span>
+                )}
+                {gestureStatus === 'holding' && !active && (
+                  <div className="h-1 w-40 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent-400 transition-all duration-75"
+                      style={{ width: `${Math.round(gestureHoldProgress * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 3-2-1 countdown overlay */}
+          {countdown !== null && countdown > 0 && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">Get ready</span>
+                <span className="font-display font-bold text-8xl text-white animate-pulse drop-shadow-lg">
+                  {countdown}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Real-time coaching feedback overlay */}
           {active && rom > 0 && (
@@ -548,6 +729,15 @@ const TrackerSkeleton: React.FC = () => {
             </div>
           )}
 
+          {/* Mini skeleton viewer overlay */}
+          <div className="absolute bottom-6 left-6 z-30">
+            <SkeletonMiniViewer
+              landmarksRef={lastLandmarks}
+              active={active}
+              mirror={mirror}
+            />
+          </div>
+
           {/* Overlaid UI action controls */}
           <div className="absolute bottom-6 right-6 z-20 flex items-center gap-3">
             <button
@@ -562,14 +752,7 @@ const TrackerSkeleton: React.FC = () => {
               Toggle Mirror
             </button>
             
-            {!active ? (
-              <button 
-                onClick={handleStart}
-                className="btn-accent py-2.5 px-5 shadow-lg hover:shadow-accent-500/10 text-xs font-bold"
-              >
-                <Play className="h-4 w-4 fill-current" /> Initialize Calibration
-              </button>
-            ) : (
+            {active && (
               <button 
                 onClick={handleStop}
                 disabled={saving}
@@ -621,7 +804,7 @@ const TrackerSkeleton: React.FC = () => {
                   <div>
                     <span className="text-xs text-slate-400 block font-medium uppercase tracking-wider">Flexion Range (ROM)</span>
                     <span className="font-display font-bold text-3xl mt-1 block text-primary-400">
-                      {rom > 0 ? `${rom}°` : 'Calibrating...'}
+                      {rom > 0 ? `${rom}°` : (cameraReady ? 'Calibrating...' : 'Waiting...')}
                     </span>
                   </div>
                   {rom > 0 && liveStatus !== 'idle' && (
@@ -674,7 +857,7 @@ const TrackerSkeleton: React.FC = () => {
 
                   {/* Hip */}
                   <div className={`p-2 rounded-xl border transition-all ${
-                    exerciseName.toLowerCase().includes('hip') 
+                    exerciseName.toLowerCase().includes('hip') || exerciseName.toLowerCase().includes('lunge')
                       ? 'bg-primary-950/20 border-primary-500/50' 
                       : 'bg-slate-950/40 border-slate-850/60'
                   }`}>
@@ -686,7 +869,7 @@ const TrackerSkeleton: React.FC = () => {
 
                   {/* Knee */}
                   <div className={`p-2 rounded-xl border transition-all ${
-                    exerciseName.toLowerCase().includes('knee') || exerciseName.toLowerCase().includes('squat')
+                    exerciseName.toLowerCase().includes('knee') || exerciseName.toLowerCase().includes('squat') || exerciseName.toLowerCase().includes('lunge')
                       ? 'bg-primary-950/20 border-primary-500/50' 
                       : 'bg-slate-950/40 border-slate-850/60'
                   }`}>
@@ -711,7 +894,7 @@ const TrackerSkeleton: React.FC = () => {
               <div className="p-4 bg-slate-900 rounded-2xl border border-slate-850">
                 <span className="text-xs text-slate-400 block font-medium uppercase tracking-wider">Alignment Confidence</span>
                 <span className="font-display font-bold text-3xl mt-1 block text-yellow-500">
-                  {rom > 0 ? `${score}%` : 'Calibrating...'}
+                  {rom > 0 ? `${score}%` : (cameraReady ? 'Calibrating...' : 'Waiting...')}
                 </span>
               </div>
             </div>
@@ -722,8 +905,8 @@ const TrackerSkeleton: React.FC = () => {
             <AlertCircle className="h-4.5 w-4.5 shrink-0 text-indigo-400" />
             <p>
               {exerciseName.toLowerCase().includes('squat')
-                ? "Stand sideways to the camera for best accuracy. Keep your back straight and lower your hips until thighs are parallel to the ground."
-                : "Ensure your target joint limb is fully visible in the camera view window. Rest immediately if you feel pain."
+                ? "Stand sideways to the camera. Show a clear thumbs up — the AI gesture model will detect it, then you'll get a 3-2-1 countdown. Thumbs up again to stop."
+                : "Camera calibrates automatically. Show thumbs up to the camera (watch for 'AI sees: Thumb Up' on screen), then a 3-2-1 countdown starts the workout. Thumbs up again to stop."
               }
             </p>
           </div>

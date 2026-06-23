@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { fetchMySessions, fetchPatientProfile, fetchMyAssignments } from '@/services/api';
+import type { ExerciseAssignment, MotionSession } from '@/types/api';
 import { 
   Play, 
   PlayCircle,
@@ -118,8 +119,8 @@ const ProgressChart: React.FC<{ data: ProgressData[] }> = ({ data }) => {
 
 const PatientDashboard: React.FC = () => {
   const { profile, signOut } = useAuth();
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<MotionSession[]>([]);
+  const [assignments, setAssignments] = useState<ExerciseAssignment[]>([]);
   const [clinicalProfile, setClinicalProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -127,18 +128,11 @@ const PatientDashboard: React.FC = () => {
   useEffect(() => {
     async function loadPatientData() {
       try {
-        const patientData = await fetchPatientProfile();
-        const sessionsData = await fetchMySessions();
-        let assignmentsData = [];
-        try {
-          assignmentsData = await fetchMyAssignments();
-        } catch (e) {
-          console.warn('Assignments endpoint failed. Falling back to local defaults.', e);
-          assignmentsData = [
-            { id: 1, is_completed: false, due_date: new Date().toISOString().split('T')[0], exercise: { name: 'Shoulder Abduction', description: 'Raise arm sideways to measure shoulder flexibility.', instructions: 'Stand straight, lift arm slowly to the side, keep elbow straight, repeat.', target_rom: 120, thumbnail_url: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=150', target_joints: { list: ['Shoulder R'] } } },
-            { id: 2, is_completed: false, due_date: new Date(Date.now() + 86400000).toISOString().split('T')[0], exercise: { name: 'Elbow Flexion', description: 'Bend arm at the elbow to test range of motion.', instructions: 'Hold weights, lift forearm upwards, bend elbow fully, return to start.', target_rom: 135, thumbnail_url: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?q=80&w=150', target_joints: { list: ['Elbow R'] } } }
-          ];
-        }
+        const [patientData, sessionsData, assignmentsData] = await Promise.all([
+          fetchPatientProfile(),
+          fetchMySessions(),
+          fetchMyAssignments(),
+        ]);
         setClinicalProfile(patientData);
         setSessions(sessionsData);
         setAssignments(assignmentsData);
@@ -169,7 +163,8 @@ const PatientDashboard: React.FC = () => {
       score: s.avg_score || 0
     }));
 
-  const upcomingAssignments = assignments.filter(a => !a.is_completed);
+  const activeAssignments = assignments;
+  const upcomingAssignments = assignments;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-brand-dark flex flex-col transition-colors duration-200 text-slate-800 dark:text-slate-200">
@@ -224,9 +219,9 @@ const PatientDashboard: React.FC = () => {
             </p>
           </div>
           <div className="relative z-10 shrink-0">
-            {upcomingAssignments.length > 0 ? (
+            {activeAssignments.length > 0 ? (
               <button 
-                onClick={() => navigate('/tracker', { state: { exerciseName: upcomingAssignments[0].exercise?.name } })}
+                onClick={() => navigate('/tracker', { state: { exerciseName: activeAssignments[0].exercise?.name, rules: activeAssignments[0].exercise?.rules } })}
                 className="btn-accent py-4 px-6 shadow-lg hover:shadow-accent-500/20 text-base font-bold flex items-center gap-2"
               >
                 <Play className="h-5 w-5 fill-current" />
@@ -318,7 +313,7 @@ const PatientDashboard: React.FC = () => {
 
               {loading ? (
                 <p className="text-sm text-slate-400 text-center py-8">Loading program...</p>
-              ) : assignments.length === 0 ? (
+              ) : activeAssignments.length === 0 ? (
                 <div className="text-center py-12 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400">
                   <Dumbbell className="h-10 w-10 mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                   <p className="font-medium">No exercises assigned yet.</p>
@@ -326,7 +321,7 @@ const PatientDashboard: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {assignments.map((assignment) => {
+                  {activeAssignments.map((assignment) => {
                     const ex = assignment.exercise;
                     if (!ex) return null;
                     return (
@@ -341,11 +336,6 @@ const PatientDashboard: React.FC = () => {
                                 (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=150';
                               }}
                             />
-                            {assignment.is_completed && (
-                              <span className="absolute top-3 right-3 bg-green-500 text-white text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <ShieldCheck className="h-3 w-3" /> Completed
-                              </span>
-                            )}
                           </div>
                           
                           <div className="p-5 space-y-3">
@@ -427,11 +417,11 @@ const PatientDashboard: React.FC = () => {
               {loading ? (
                 <p className="text-xs text-slate-400">Loading schedule...</p>
               ) : upcomingAssignments.length === 0 ? (
-                <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-900/30 text-green-700 dark:text-green-400 rounded-2xl flex gap-2.5 items-start">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/20 border border-slate-200/50 dark:border-slate-800/30 text-slate-500 dark:text-slate-400 rounded-2xl flex gap-2.5 items-start">
                   <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5" />
                   <div className="text-xs">
-                    <span className="font-bold block">No Pending Tasks</span>
-                    <span className="text-[10px] opacity-80 mt-0.5 block">You are fully up to date with your prescribed exercises!</span>
+                    <span className="font-bold block">No Assigned Exercises</span>
+                    <span className="text-[10px] opacity-80 mt-0.5 block">Your clinician will assign exercises to your program.</span>
                   </div>
                 </div>
               ) : (
@@ -448,7 +438,7 @@ const PatientDashboard: React.FC = () => {
                         </span>
                       </div>
                       <button
-                        onClick={() => navigate('/tracker', { state: { exerciseName: assignment.exercise?.name } })}
+                        onClick={() => navigate('/tracker', { state: { exerciseName: assignment.exercise?.name, rules: assignment.exercise?.rules } })}
                         className="p-1.5 hover:bg-primary-50 dark:hover:bg-primary-950/30 text-primary-500 rounded-xl transition-all"
                         title="Start workout"
                       >

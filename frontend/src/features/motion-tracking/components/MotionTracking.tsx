@@ -3,19 +3,23 @@ import { Camera, AlertCircle, RefreshCw } from 'lucide-react';
 import { calculateAngle, JointType } from '../utils/poseProcessor';
 
 interface MotionTrackingProps {
-  isActive: boolean;
+  /** When true, the webcam and pose detection loop are running */
+  cameraEnabled: boolean;
   mirror?: boolean;
   onPoseDetected?: (landmarks: any) => void;
+  onGestureDetected?: (gestures: { gesture: string; score: number; handedness: string }[]) => void;
   onCameraReady?: (ready: boolean) => void;
 }
 
 const MotionTracking: React.FC<MotionTrackingProps> = ({
-  isActive,
+  cameraEnabled,
   mirror = true,
   onPoseDetected,
+  onGestureDetected,
   onCameraReady
 }) => {
   const [loading, setLoading] = useState(true);
+  const [loadingStage, setLoadingStage] = useState('Initializing...');
   const [error, setError] = useState<string | null>(null);
   const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -25,6 +29,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const poseInstance = useRef<any>(null);
+  const gestureInstance = useRef<any>(null);
   const requestRef = useRef<number | null>(null);
 
   // Scan connected camera input devices
@@ -71,7 +76,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
       x: (landmarks[idx]?.x ?? 0) * W,
       y: (landmarks[idx]?.y ?? 0) * H,
     });
-    const visible = (idx: number) => (landmarks[idx]?.visibility ?? 0) > 0.45;
+    const visible = (idx: number) => (landmarks[idx]?.visibility ?? 0) > 0.25;
     const bothVisible = (a: number, b: number) => visible(a) && visible(b);
 
     const drawBone = (a: number, b: number, color: string, width = 3.5) => {
@@ -231,12 +236,50 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
     });
   };
 
-  // 1. Dynamic import and initialize PoseLandmarker
+  // Draw hand landmarks from GestureRecognizer for visual feedback
+  const drawHandLandmarks = (ctx: CanvasRenderingContext2D, handLandmarks: any[]) => {
+    const W = ctx.canvas.width;
+    const H = ctx.canvas.height;
+
+    handLandmarks.forEach((hand) => {
+      hand.forEach((lm: any, i: number) => {
+        const x = lm.x * W;
+        const y = lm.y * H;
+        ctx.beginPath();
+        ctx.arc(x, y, i === 0 ? 6 : 4, 0, 2 * Math.PI);
+        ctx.fillStyle = i === 4 ? '#facc15' : '#38bdf8';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+
+      const connections = [
+        [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+        [0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],
+        [0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]
+      ];
+      connections.forEach(([a, b]) => {
+        const pa = hand[a];
+        const pb = hand[b];
+        if (!pa || !pb) return;
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.moveTo(pa.x * W, pa.y * H);
+        ctx.lineTo(pb.x * W, pb.y * H);
+        ctx.stroke();
+      });
+    });
+  };
+
+  // 1. Dynamic import and initialize PoseLandmarker + GestureRecognizer
   useEffect(() => {
     let active = true;
 
     async function initMediaPipeVision() {
       try {
+        setLoadingStage('Loading vision engine...');
         // @ts-ignore
         const visionModule = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.mjs");
         
@@ -244,6 +287,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
         );
 
+        setLoadingStage('Loading pose model...');
         const landmarker = await visionModule.PoseLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
@@ -253,14 +297,25 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
           numPoses: 1
         });
 
+        setLoadingStage('Loading gesture recognition model...');
+        const gestureRecognizer = await visionModule.GestureRecognizer.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO",
+          numHands: 2
+        });
+
         if (active) {
           poseInstance.current = landmarker;
+          gestureInstance.current = gestureRecognizer;
           setLoading(false);
         }
       } catch (err: any) {
-        console.error('Failed to initialize PoseLandmarker tasks-vision', err);
+        console.error('Failed to initialize MediaPipe vision models', err);
         if (active) {
-          setError(`Could not boot joint recognition model: ${err?.message || String(err)}`);
+          setError(`Could not boot recognition models: ${err?.message || String(err)}`);
           setLoading(false);
         }
       }
@@ -273,12 +328,15 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
       if (poseInstance.current) {
         poseInstance.current.close();
       }
+      if (gestureInstance.current) {
+        gestureInstance.current.close();
+      }
     };
   }, []);
 
   // 2. Real-time draw loop triggered by browser frames
   const drawLoop = () => {
-    if (!videoRef.current || !canvasRef.current || !poseInstance.current || !isActive) {
+    if (!videoRef.current || !canvasRef.current || !poseInstance.current || !gestureInstance.current || !cameraEnabled) {
       requestRef.current = requestAnimationFrame(drawLoop);
       return;
     }
@@ -287,6 +345,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const landmarker = poseInstance.current;
+    const gestureRecognizer = gestureInstance.current;
 
     if (video.readyState >= 2 && ctx) {
       if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
@@ -313,6 +372,27 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
             onPoseDetected(landmarks);
           }
         }
+
+        // Pretrained gesture recognition (Thumb_Up, etc.)
+        const gestureResult = gestureRecognizer.recognizeForVideo(video, timestamp);
+        if (gestureResult.landmarks && gestureResult.landmarks.length > 0) {
+          drawHandLandmarks(ctx, gestureResult.landmarks);
+        }
+
+        if (onGestureDetected && gestureResult.gestures) {
+          const parsed: { gesture: string; score: number; handedness: string }[] = [];
+          gestureResult.gestures.forEach((handGestures: any[], i: number) => {
+            const top = handGestures?.[0];
+            if (!top) return;
+            const handedness = gestureResult.handedness?.[i]?.[0]?.categoryName ?? 'Unknown';
+            parsed.push({
+              gesture: top.categoryName as string,
+              score: top.score as number,
+              handedness: handedness as string,
+            });
+          });
+          if (parsed.length > 0) onGestureDetected(parsed);
+        }
       } catch (detErr) {
         console.error('Telemetry frame calculation skipped', detErr);
       }
@@ -324,7 +404,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
 
   // 3. Request webcam stream and manage draw animation loop
   useEffect(() => {
-    if (!isActive) {
+    if (!cameraEnabled) {
       if (videoRef.current && videoRef.current.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());
@@ -369,7 +449,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
       }
     };
 
-    if (!loading && !error && poseInstance.current) {
+    if (!loading && !error && poseInstance.current && gestureInstance.current) {
       startCamera();
     }
 
@@ -384,7 +464,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
         requestRef.current = null;
       }
     };
-  }, [isActive, loading, error, retryToggle]);
+  }, [cameraEnabled, loading, error, retryToggle]);
 
   return (
     <div className="relative w-full h-full min-h-[350px] bg-black rounded-3xl border border-slate-800 flex items-center justify-center overflow-hidden">
@@ -398,7 +478,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
       />
 
       {/* Render Canvas Overlay */}
-      {isActive && cameraPermission === true && !loading && !error && (
+      {cameraEnabled && cameraPermission === true && !loading && !error && (
         <canvas
           ref={canvasRef}
           className={`w-full h-full object-cover transition-transform duration-200 ${mirror ? '-scale-x-100' : ''}`}
@@ -409,7 +489,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
       {loading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-3 bg-black/90 z-20">
           <RefreshCw className="h-8 w-8 text-primary-500 animate-spin" />
-          <span className="text-xs font-semibold uppercase tracking-wider">Loading Skeletal Capture Engine...</span>
+          <span className="text-xs font-semibold uppercase tracking-wider">{loadingStage}</span>
         </div>
       )}
 
@@ -483,17 +563,16 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
         </div>
       )}
 
-      {/* Inactive prompt */}
-      {!isActive && !loading && !error && (
+      {/* Waiting for camera */}
+      {cameraEnabled && cameraPermission === null && !loading && !error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 gap-2 z-10">
-          <Camera className="h-12 w-12" />
-          <p className="text-sm font-medium">Camera tracking is offline</p>
-          <p className="text-2xs text-slate-600">Press Initialize to enable camera and calibrate capture skeleton.</p>
+          <RefreshCw className="h-10 w-10 text-primary-500 animate-spin" />
+          <p className="text-sm font-medium">Starting camera calibration...</p>
         </div>
       )}
 
       {/* Skeleton color legend — visible when camera is live */}
-      {isActive && cameraPermission === true && (
+      {cameraEnabled && cameraPermission === true && (
         <div className="absolute top-4 right-4 z-20 flex flex-col gap-1 bg-slate-950/80 backdrop-blur-sm px-3 py-2.5 rounded-xl border border-slate-800/80">
           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Skeleton</span>
           <span className="flex items-center gap-1.5 text-[10px] text-slate-300"><span className="h-1.5 w-4 rounded bg-cyan-400 inline-block" /> Left arm</span>
@@ -504,8 +583,8 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
       )}
 
       {/* Real-time mirror tag indicator */}
-      {isActive && cameraPermission === true && (
-        <span className="absolute bottom-6 left-6 z-20 flex items-center gap-2 text-[10px] font-semibold bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80 backdrop-blur-sm text-slate-300">
+      {cameraEnabled && cameraPermission === true && (
+        <span className="absolute top-4 left-4 z-20 flex items-center gap-2 text-[10px] font-semibold bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80 backdrop-blur-sm text-slate-300">
           <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
           Capture Live {mirror ? '| Mirrored' : ''}
         </span>

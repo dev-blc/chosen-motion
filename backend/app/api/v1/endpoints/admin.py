@@ -9,6 +9,7 @@ from app.core.security import require_admin, UserPayload
 from app.core.config import settings
 from app.models.models import Patient, MotionSession as DbSession, User, Consent, ExerciseAssignment, Exercise
 from app.api.v1.endpoints.auth import generate_patient_id, get_supabase_auth_url
+from app.services.query_helpers import session_load_options, assignment_load_options
 from app.schemas.schemas import (
     PatientResponse, 
     DashboardStats, 
@@ -19,7 +20,11 @@ from app.schemas.schemas import (
     MessageResponse,
     ExerciseResponse,
     ExerciseCreateAdmin,
-    ExerciseUpdateAdmin
+    ExerciseUpdateAdmin,
+    SessionResponse,
+    ExerciseAssignmentCreate,
+    ExerciseAssignmentUpdate,
+    ExerciseAssignmentResponse,
 )
 
 router = APIRouter()
@@ -51,7 +56,15 @@ def get_dashboard_statistics(
     avg_score = db.query(func.avg(DbSession.score)).join(Patient).filter(Patient.is_archived == False).scalar() or 0.0
 
     # Get recent sessions across active patients
-    recent_sessions = db.query(DbSession).join(Patient).filter(Patient.is_archived == False).order_by(DbSession.created_at.desc()).limit(5).all()
+    recent_sessions = (
+        db.query(DbSession)
+        .join(Patient)
+        .filter(Patient.is_archived == False)
+        .options(*session_load_options())
+        .order_by(DbSession.completed_at.desc())
+        .limit(5)
+        .all()
+    )
 
     return DashboardStats(
         total_patients=total_patients,
@@ -197,10 +210,22 @@ def get_patient_profile(
         
     # Retrieve relations
     consents = db.query(Consent).filter(Consent.patient_id == patient.patient_id).all()
-    assignments = db.query(ExerciseAssignment).filter(ExerciseAssignment.patient_id == patient.patient_id).all()
-    sessions = db.query(DbSession).filter(DbSession.patient_id == patient.patient_id).order_by(DbSession.created_at.desc()).all()
+    assignments = (
+        db.query(ExerciseAssignment)
+        .filter(ExerciseAssignment.patient_id == patient.patient_id)
+        .options(*assignment_load_options())
+        .all()
+    )
+    sessions = (
+        db.query(DbSession)
+        .filter(DbSession.patient_id == patient.patient_id)
+        .options(*session_load_options())
+        .order_by(DbSession.completed_at.desc())
+        .all()
+    )
 
     return PatientDetailFullResponse(
+        patient_id=patient.patient_id,
         user_id=str(patient.auth_user_id),
         email=patient.email,
         full_name=patient.full_name,
@@ -246,6 +271,166 @@ def edit_patient(
     db.refresh(patient)
     return patient
 
+# ==========================================
+# Exercise Assignment Endpoints
+# ==========================================
+
+@router.post(
+    "/patients/{patient_id}/assignments",
+    response_model=ExerciseAssignmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def assign_exercise_to_patient(
+    patient_id: str,
+    assignment_data: ExerciseAssignmentCreate,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Assign an exercise from the catalog to a patient.
+    """
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found.",
+        )
+
+    exercise = db.query(Exercise).filter(Exercise.id == assignment_data.exercise_id).first()
+    if not exercise:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Exercise not found in catalog.",
+        )
+
+    existing = (
+        db.query(ExerciseAssignment)
+        .filter(
+            ExerciseAssignment.patient_id == patient.patient_id,
+            ExerciseAssignment.exercise_id == assignment_data.exercise_id,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Exercise '{exercise.name}' is already assigned to this patient.",
+        )
+
+    new_assignment = ExerciseAssignment(
+        patient_id=patient.patient_id,
+        exercise_id=assignment_data.exercise_id,
+        assigned_by=current_user.email,
+        due_date=assignment_data.due_date,
+        is_completed=False,
+    )
+    db.add(new_assignment)
+    db.commit()
+    db.refresh(new_assignment)
+
+    assignment = (
+        db.query(ExerciseAssignment)
+        .filter(ExerciseAssignment.id == new_assignment.id)
+        .options(*assignment_load_options())
+        .first()
+    )
+    return assignment
+
+
+@router.delete(
+    "/patients/{patient_id}/assignments/{assignment_id}",
+    response_model=MessageResponse,
+)
+def remove_exercise_assignment(
+    patient_id: str,
+    assignment_id: int,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Remove an exercise assignment from a patient.
+    """
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found.",
+        )
+
+    assignment = (
+        db.query(ExerciseAssignment)
+        .filter(
+            ExerciseAssignment.id == assignment_id,
+            ExerciseAssignment.patient_id == patient.patient_id,
+        )
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found for this patient.",
+        )
+
+    exercise_name = assignment.exercise.name if assignment.exercise else "Exercise"
+    db.delete(assignment)
+    db.commit()
+    return MessageResponse(
+        message=f"Assignment for '{exercise_name}' has been removed from the patient."
+    )
+
+
+@router.put(
+    "/patients/{patient_id}/assignments/{assignment_id}",
+    response_model=ExerciseAssignmentResponse,
+)
+def update_exercise_assignment(
+    patient_id: str,
+    assignment_id: int,
+    update_data: ExerciseAssignmentUpdate,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Update an exercise assignment (due date or completion status).
+    """
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found.",
+        )
+
+    assignment = (
+        db.query(ExerciseAssignment)
+        .filter(
+            ExerciseAssignment.id == assignment_id,
+            ExerciseAssignment.patient_id == patient.patient_id,
+        )
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found for this patient.",
+        )
+
+    if update_data.due_date is not None:
+        assignment.due_date = update_data.due_date
+    if update_data.is_completed is not None:
+        assignment.is_completed = update_data.is_completed
+
+    db.commit()
+    db.refresh(assignment)
+
+    assignment = (
+        db.query(ExerciseAssignment)
+        .filter(ExerciseAssignment.id == assignment.id)
+        .options(*assignment_load_options())
+        .first()
+    )
+    return assignment
+
+
 @router.delete("/patients/{patient_id}", response_model=MessageResponse)
 def archive_patient(
     patient_id: str,
@@ -275,7 +460,12 @@ def get_any_session_detail(
     """
     Access coordinates and metrics for any tracking session across the workspace.
     """
-    session = db.query(DbSession).filter(DbSession.id == session_id).first()
+    session = (
+        db.query(DbSession)
+        .filter(DbSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -372,3 +562,40 @@ def delete_exercise_endpoint(
     db.delete(exercise)
     db.commit()
     return MessageResponse(message=f"Exercise '{exercise.name}' has been successfully deleted.")
+
+@router.get("/sessions", response_model=List[SessionResponse])
+def list_motion_sessions(
+    patient_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    List workout session reports for the Motion Reports admin view.
+    Optionally filter by patient_id. Returns sessions with exercise and metrics loaded.
+    """
+    query = (
+        db.query(DbSession)
+        .join(Patient)
+        .filter(Patient.is_archived == False)
+        .options(*session_load_options())
+    )
+
+    if patient_id:
+        patient = find_patient_robust(patient_id, db)
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Patient not found."
+            )
+        query = query.filter(DbSession.patient_id == patient.patient_id)
+
+    sessions = (
+        query
+        .order_by(DbSession.completed_at.desc())
+        .offset(max(offset, 0))
+        .limit(min(max(limit, 1), 200))
+        .all()
+    )
+    return sessions
