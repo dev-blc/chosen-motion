@@ -384,7 +384,12 @@ export function calculateAngle(
  */
 export function computeFrameConfidence(landmarks: Landmark[]): number {
   if (!landmarks || landmarks.length === 0) return 0;
-  const total = landmarks.reduce((acc, l) => acc + (l.visibility ?? 0), 0);
+  const total = landmarks.reduce((acc, l) => {
+    const v = l.visibility ?? l.presence ?? 0;
+    // If landmark has coordinates but no visibility score, assume moderate confidence
+    if (v <= 0 && l.x !== undefined && l.y !== undefined) return acc + 0.5;
+    return acc + v;
+  }, 0);
   return total / landmarks.length;
 }
 
