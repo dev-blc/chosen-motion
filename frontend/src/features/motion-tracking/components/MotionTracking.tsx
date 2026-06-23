@@ -3,14 +3,15 @@ import { Camera, AlertCircle, RefreshCw } from 'lucide-react';
 import { calculateAngle, JointType } from '../utils/poseProcessor';
 
 interface MotionTrackingProps {
-  isActive: boolean;
+  /** When true, the webcam and pose detection loop are running */
+  cameraEnabled: boolean;
   mirror?: boolean;
   onPoseDetected?: (landmarks: any) => void;
   onCameraReady?: (ready: boolean) => void;
 }
 
 const MotionTracking: React.FC<MotionTrackingProps> = ({
-  isActive,
+  cameraEnabled,
   mirror = true,
   onPoseDetected,
   onCameraReady
@@ -278,7 +279,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
 
   // 2. Real-time draw loop triggered by browser frames
   const drawLoop = () => {
-    if (!videoRef.current || !canvasRef.current || !poseInstance.current || !isActive) {
+    if (!videoRef.current || !canvasRef.current || !poseInstance.current || !cameraEnabled) {
       requestRef.current = requestAnimationFrame(drawLoop);
       return;
     }
@@ -324,7 +325,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
 
   // 3. Request webcam stream and manage draw animation loop
   useEffect(() => {
-    if (!isActive) {
+    if (!cameraEnabled) {
       if (videoRef.current && videoRef.current.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());
@@ -384,7 +385,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
         requestRef.current = null;
       }
     };
-  }, [isActive, loading, error, retryToggle]);
+  }, [cameraEnabled, loading, error, retryToggle]);
 
   return (
     <div className="relative w-full h-full min-h-[350px] bg-black rounded-3xl border border-slate-800 flex items-center justify-center overflow-hidden">
@@ -398,7 +399,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
       />
 
       {/* Render Canvas Overlay */}
-      {isActive && cameraPermission === true && !loading && !error && (
+      {cameraEnabled && cameraPermission === true && !loading && !error && (
         <canvas
           ref={canvasRef}
           className={`w-full h-full object-cover transition-transform duration-200 ${mirror ? '-scale-x-100' : ''}`}
@@ -483,17 +484,16 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
         </div>
       )}
 
-      {/* Inactive prompt */}
-      {!isActive && !loading && !error && (
+      {/* Waiting for camera */}
+      {cameraEnabled && cameraPermission === null && !loading && !error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 gap-2 z-10">
-          <Camera className="h-12 w-12" />
-          <p className="text-sm font-medium">Camera tracking is offline</p>
-          <p className="text-2xs text-slate-600">Press Initialize to enable camera and calibrate capture skeleton.</p>
+          <RefreshCw className="h-10 w-10 text-primary-500 animate-spin" />
+          <p className="text-sm font-medium">Starting camera calibration...</p>
         </div>
       )}
 
       {/* Skeleton color legend — visible when camera is live */}
-      {isActive && cameraPermission === true && (
+      {cameraEnabled && cameraPermission === true && (
         <div className="absolute top-4 right-4 z-20 flex flex-col gap-1 bg-slate-950/80 backdrop-blur-sm px-3 py-2.5 rounded-xl border border-slate-800/80">
           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Skeleton</span>
           <span className="flex items-center gap-1.5 text-[10px] text-slate-300"><span className="h-1.5 w-4 rounded bg-cyan-400 inline-block" /> Left arm</span>
@@ -504,7 +504,7 @@ const MotionTracking: React.FC<MotionTrackingProps> = ({
       )}
 
       {/* Real-time mirror tag indicator */}
-      {isActive && cameraPermission === true && (
+      {cameraEnabled && cameraPermission === true && (
         <span className="absolute top-4 left-4 z-20 flex items-center gap-2 text-[10px] font-semibold bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80 backdrop-blur-sm text-slate-300">
           <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
           Capture Live {mirror ? '| Mirrored' : ''}

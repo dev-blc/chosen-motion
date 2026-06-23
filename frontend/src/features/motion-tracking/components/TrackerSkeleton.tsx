@@ -4,13 +4,14 @@ import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSessi
 import MotionTracking from './MotionTracking';
 import SkeletonMiniViewer from './SkeletonMiniViewer';
 import { PoseBuffer, calculateAngle } from '../utils/poseProcessor';
+import { ClapDetector } from '../utils/clapDetector';
 import { 
   ArrowLeft, 
   Activity, 
-  Play, 
   Square,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  HandMetal
 } from 'lucide-react';
 
 const TrackerSkeleton: React.FC = () => {
@@ -19,7 +20,8 @@ const TrackerSkeleton: React.FC = () => {
   const exerciseName = location.state?.exerciseName || 'Shoulder Abduction';
   
   const [active, setActive] = useState(false);
-  const [_cameraReady, setCameraReady] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [clapStatus, setClapStatus] = useState<'waiting_start' | 'workout_active' | 'clap_detected'>('waiting_start');
   const [mirror, setMirror] = useState(true);
   const [duration, setDuration] = useState(0);
   const [reps, setReps] = useState(0);
@@ -81,6 +83,21 @@ const TrackerSkeleton: React.FC = () => {
   const lastLandmarks = useRef<any>(null);
   const repState = useRef<'flexed' | 'extended'>('extended');
   const prevRepsRef = useRef(0);
+  const clapDetector = useRef<ClapDetector>(new ClapDetector());
+  const clapFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleStopRef = useRef<() => Promise<void>>(async () => {});
+  const handleStartRef = useRef<() => Promise<void>>(async () => {});
+  const activeRef = useRef(false);
+
+  // Auto-enable camera calibration on page load
+  useEffect(() => {
+    setCameraReady(true);
+  }, []);
+
+  useEffect(() => {
+    activeRef.current = active;
+    setClapStatus(active ? 'workout_active' : 'waiting_start');
+  }, [active]);
 
   // Announce rep count via browser text-to-speech
   useEffect(() => {
@@ -103,6 +120,30 @@ const TrackerSkeleton: React.FC = () => {
   const handlePoseDetected = (landmarks: any) => {
     if (!landmarks || landmarks.length === 0) return;
     lastLandmarks.current = landmarks;
+
+    // Clap gesture detection for workout start/stop (always active when camera is on)
+    const clapResult = clapDetector.current.detect(landmarks);
+    if (clapResult.detected) {
+      const wasActive = activeRef.current;
+      setClapStatus('clap_detected');
+      if (clapFlashTimerRef.current) clearTimeout(clapFlashTimerRef.current);
+      clapFlashTimerRef.current = setTimeout(() => {
+        setClapStatus(activeRef.current ? 'workout_active' : 'waiting_start');
+      }, 1200);
+
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(wasActive ? 'Workout stopped' : 'Workout started');
+        utterance.rate = 1.15;
+        window.speechSynthesis.speak(utterance);
+      }
+
+      if (wasActive) {
+        handleStopRef.current();
+      } else {
+        handleStartRef.current();
+      }
+    }
     
     // Calculate all 8 live angles (4 joints * 2 sides) + torso angle
     const angles = {
@@ -135,42 +176,56 @@ const TrackerSkeleton: React.FC = () => {
     } else if (exerciseName.toLowerCase().includes('shoulder')) {
       calculatedRom = angles.shoulder_r;
       
-      // Rep counting: flexion (lifted > 95 deg), extension (lowered < 40 deg)
-      if (calculatedRom > 95 && repState.current === 'extended') {
-        repState.current = 'flexed';
-      } else if (calculatedRom < 40 && repState.current === 'flexed') {
-        repState.current = 'extended';
-        setReps(r => r + 1);
+      if (activeRef.current) {
+        // Rep counting: flexion (lifted > 95 deg), extension (lowered < 40 deg)
+        if (calculatedRom > 95 && repState.current === 'extended') {
+          repState.current = 'flexed';
+        } else if (calculatedRom < 40 && repState.current === 'flexed') {
+          repState.current = 'extended';
+          setReps(r => r + 1);
+        }
       }
-    } else if (exerciseName.toLowerCase().includes('knee')) {
-      calculatedRom = angles.knee_r;
+    } else if (exerciseName.toLowerCase().includes('knee') || exerciseName.toLowerCase().includes('lunge')) {
+      calculatedRom = Math.round((angles.knee_l + angles.knee_r) / 2);
       
-      // Rep counting: extension (straightened > 140 deg), flexion (bent < 90 deg)
-      if (calculatedRom > 140 && repState.current === 'flexed') {
-        repState.current = 'extended';
-        setReps(r => r + 1);
-      } else if (calculatedRom < 90 && repState.current === 'extended') {
-        repState.current = 'flexed';
+      if (activeRef.current) {
+        // Rep counting for knee/lunge: extension (> 150 deg), flexion (< 100 deg)
+        if (calculatedRom > 150 && repState.current === 'flexed') {
+          repState.current = 'extended';
+          setReps(r => r + 1);
+        } else if (calculatedRom < 100 && repState.current === 'extended') {
+          repState.current = 'flexed';
+        }
       }
+    } else if (exerciseName.toLowerCase().includes('hip')) {
+      calculatedRom = Math.round((angles.hip_l + angles.hip_r) / 2);
     } else {
       // Default: Elbow Flexion
       calculatedRom = angles.elbow_r;
       
-      // Rep counting: flexion (fully bent < 55 deg), extension (straightened > 130 deg)
-      if (calculatedRom < 55 && repState.current === 'extended') {
-        repState.current = 'flexed';
-      } else if (calculatedRom > 130 && repState.current === 'flexed') {
-        repState.current = 'extended';
-        setReps(r => r + 1);
+      if (activeRef.current) {
+        // Rep counting: flexion (fully bent < 55 deg), extension (straightened > 130 deg)
+        if (calculatedRom < 55 && repState.current === 'extended') {
+          repState.current = 'flexed';
+        } else if (calculatedRom > 130 && repState.current === 'flexed') {
+          repState.current = 'extended';
+          setReps(r => r + 1);
+        }
       }
     }
 
     setRom(calculatedRom);
 
+    const confidence = landmarks.reduce((acc: number, l: any) => acc + (l.visibility || 0), 0) / landmarks.length;
+    setScore(Math.round(confidence * 100));
+
+    // Skip coaching analysis when workout is not active
+    if (!activeRef.current) {
+      return;
+    }
+
     // Skip client-side coaching for Squats since backend handles it
     if (exerciseName.toLowerCase().includes('squat')) {
-      const confidence = landmarks.reduce((acc: number, l: any) => acc + (l.visibility || 0), 0) / landmarks.length;
-      setScore(Math.round(confidence * 100));
       return;
     }
 
@@ -267,9 +322,6 @@ const TrackerSkeleton: React.FC = () => {
       currentStatus = allRulesPassed ? 'success' : 'warning';
     }
     setLiveStatus(currentStatus);
-
-    const confidence = landmarks.reduce((acc: number, l: any) => acc + (l.visibility || 0), 0) / landmarks.length;
-    setScore(Math.round(confidence * 100));
   };
 
   // Duration timer simulation loop
@@ -384,6 +436,7 @@ const TrackerSkeleton: React.FC = () => {
     squatSessionIdRef.current = null;
     prevRepsRef.current = 0;
     repState.current = 'extended';
+    clapDetector.current.reset();
 
     if (exerciseName.toLowerCase().includes('squat')) {
       try {
@@ -395,6 +448,7 @@ const TrackerSkeleton: React.FC = () => {
       }
     }
   };
+  handleStartRef.current = handleStart;
 
   const handleStop = async () => {
     setActive(false);
@@ -455,6 +509,7 @@ const TrackerSkeleton: React.FC = () => {
       setSaving(false);
     }
   };
+  handleStopRef.current = handleStop;
 
   const handleReset = () => {
     setActive(false);
@@ -470,6 +525,8 @@ const TrackerSkeleton: React.FC = () => {
     squatSessionIdRef.current = null;
     prevRepsRef.current = 0;
     repState.current = 'extended';
+    clapDetector.current.reset();
+    setClapStatus('waiting_start');
   };
 
 
@@ -501,11 +558,31 @@ const TrackerSkeleton: React.FC = () => {
         {/* Camera Tracking Component */}
         <div className="lg:col-span-3 relative flex flex-col rounded-3xl overflow-hidden min-h-[400px]">
           <MotionTracking
-            isActive={active}
+            cameraEnabled={cameraReady}
             mirror={mirror}
             onPoseDetected={handlePoseDetected}
             onCameraReady={setCameraReady}
           />
+
+          {/* Clap-to-start / clap-to-stop instruction overlay */}
+          {cameraReady && !saving && (
+            <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-20 px-5 py-3 rounded-2xl border backdrop-blur-md shadow-premium flex items-center gap-3 transition-all duration-300 ${
+              clapStatus === 'clap_detected'
+                ? 'bg-accent-500/20 border-accent-400/50 text-accent-300'
+                : active
+                  ? 'bg-red-950/60 border-red-500/30 text-red-300'
+                  : 'bg-primary-950/60 border-primary-500/30 text-primary-300'
+            }`}>
+              <HandMetal className={`h-5 w-5 ${clapStatus === 'clap_detected' ? 'animate-bounce' : ''}`} />
+              <span className="text-xs font-bold uppercase tracking-wider">
+                {clapStatus === 'clap_detected'
+                  ? (active ? 'Clap detected — stopping...' : 'Clap detected — starting workout!')
+                  : active
+                    ? 'Clap your hands to stop workout'
+                    : 'Clap your hands to start workout'}
+              </span>
+            </div>
+          )}
 
           {/* Real-time coaching feedback overlay */}
           {active && rom > 0 && (
@@ -592,14 +669,7 @@ const TrackerSkeleton: React.FC = () => {
               Toggle Mirror
             </button>
             
-            {!active ? (
-              <button 
-                onClick={handleStart}
-                className="btn-accent py-2.5 px-5 shadow-lg hover:shadow-accent-500/10 text-xs font-bold"
-              >
-                <Play className="h-4 w-4 fill-current" /> Initialize Calibration
-              </button>
-            ) : (
+            {active && (
               <button 
                 onClick={handleStop}
                 disabled={saving}
@@ -651,7 +721,7 @@ const TrackerSkeleton: React.FC = () => {
                   <div>
                     <span className="text-xs text-slate-400 block font-medium uppercase tracking-wider">Flexion Range (ROM)</span>
                     <span className="font-display font-bold text-3xl mt-1 block text-primary-400">
-                      {rom > 0 ? `${rom}°` : 'Calibrating...'}
+                      {rom > 0 ? `${rom}°` : (cameraReady ? 'Calibrating...' : 'Waiting...')}
                     </span>
                   </div>
                   {rom > 0 && liveStatus !== 'idle' && (
@@ -704,7 +774,7 @@ const TrackerSkeleton: React.FC = () => {
 
                   {/* Hip */}
                   <div className={`p-2 rounded-xl border transition-all ${
-                    exerciseName.toLowerCase().includes('hip') 
+                    exerciseName.toLowerCase().includes('hip') || exerciseName.toLowerCase().includes('lunge')
                       ? 'bg-primary-950/20 border-primary-500/50' 
                       : 'bg-slate-950/40 border-slate-850/60'
                   }`}>
@@ -716,7 +786,7 @@ const TrackerSkeleton: React.FC = () => {
 
                   {/* Knee */}
                   <div className={`p-2 rounded-xl border transition-all ${
-                    exerciseName.toLowerCase().includes('knee') || exerciseName.toLowerCase().includes('squat')
+                    exerciseName.toLowerCase().includes('knee') || exerciseName.toLowerCase().includes('squat') || exerciseName.toLowerCase().includes('lunge')
                       ? 'bg-primary-950/20 border-primary-500/50' 
                       : 'bg-slate-950/40 border-slate-850/60'
                   }`}>
@@ -741,7 +811,7 @@ const TrackerSkeleton: React.FC = () => {
               <div className="p-4 bg-slate-900 rounded-2xl border border-slate-850">
                 <span className="text-xs text-slate-400 block font-medium uppercase tracking-wider">Alignment Confidence</span>
                 <span className="font-display font-bold text-3xl mt-1 block text-yellow-500">
-                  {rom > 0 ? `${score}%` : 'Calibrating...'}
+                  {rom > 0 ? `${score}%` : (cameraReady ? 'Calibrating...' : 'Waiting...')}
                 </span>
               </div>
             </div>
@@ -752,8 +822,8 @@ const TrackerSkeleton: React.FC = () => {
             <AlertCircle className="h-4.5 w-4.5 shrink-0 text-indigo-400" />
             <p>
               {exerciseName.toLowerCase().includes('squat')
-                ? "Stand sideways to the camera for best accuracy. Keep your back straight and lower your hips until thighs are parallel to the ground."
-                : "Ensure your target joint limb is fully visible in the camera view window. Rest immediately if you feel pain."
+                ? "Stand sideways to the camera for best accuracy. Keep your back straight and lower your hips until thighs are parallel to the ground. Clap your hands at chest height to start and stop."
+                : "Camera calibrates automatically on load. Clap your hands together at chest height to start the workout, then clap again to stop. Ensure your target joint limb is fully visible. Rest immediately if you feel pain."
               }
             </p>
           </div>
