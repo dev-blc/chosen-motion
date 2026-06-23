@@ -9,10 +9,26 @@ import {
   archivePatient,
   fetchPatientDetail,
   fetchExercisesList,
+  fetchMotionReports,
+  fetchAdminProfile,
   createExercise,
   updateExercise,
   deleteExercise
 } from '@/services/api';
+import type {
+  DashboardStats,
+  Exercise,
+  MotionSession,
+  PatientDetail,
+  PatientListItem,
+} from '@/types/api';
+import {
+  exerciseJointTags,
+  patientApiId,
+  sessionFormScore,
+  sessionRom,
+  sessionTimestamp,
+} from '@/types/api';
 import { 
   Users, 
   Activity, 
@@ -44,9 +60,12 @@ const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Section>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [stats, setStats] = useState<any>(null);
-  const [patients, setPatients] = useState<any[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [patients, setPatients] = useState<PatientListItem[]>([]);
+  const [motionReports, setMotionReports] = useState<MotionSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [clinicianName, setClinicianName] = useState<string | null>(null);
   
   // Search query
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,7 +73,7 @@ const AdminDashboard: React.FC = () => {
   
   // Detailed Patient view
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [patientDetail, setPatientDetail] = useState<any>(null);
+  const [patientDetail, setPatientDetail] = useState<PatientDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   
   // Create Patient modal
@@ -76,11 +95,7 @@ const AdminDashboard: React.FC = () => {
   const [updating, setUpdating] = useState(false);
 
   // Exercises State
-  const [exercisesList, setExercisesList] = useState<any[]>([
-    { id: 1, name: 'Shoulder Abduction', description: 'Raise arm sideways to measure shoulder flexibility.', instructions: 'Stand straight, lift arm slowly to the side, keep elbow straight, repeat.', target_rom: 120, thumbnail_url: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=150', joints: ['Shoulder R', 'Shoulder L'] },
-    { id: 2, name: 'Elbow Flexion', description: 'Bend arm at the elbow to test range of motion.', instructions: 'Hold weights, lift forearm upwards, bend elbow fully, return to start.', target_rom: 135, thumbnail_url: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?q=80&w=150', joints: ['Elbow R', 'Wrist R'] },
-    { id: 3, name: 'Knee Extension', description: 'Straighten leg from sitting position to trace knee angles.', instructions: 'Sit on a chair, slowly lift leg straight out, hold, return.', target_rom: 90, thumbnail_url: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?q=80&w=150', joints: ['Knee R', 'Ankle R'] }
-  ]);
+  const [exercisesList, setExercisesList] = useState<Exercise[]>([]);
   const [createExModalOpen, setCreateExModalOpen] = useState(false);
   const [newExName, setNewExName] = useState('');
   const [newExDesc, setNewExDesc] = useState('');
@@ -109,45 +124,65 @@ const AdminDashboard: React.FC = () => {
   const loadPatientsAndStats = async (search = '', incArchived = false) => {
     setLoading(true);
     try {
-      const statsData = await fetchDashboardStats();
-      const patientsData = await fetchPatientsList(search, incArchived);
+      const [statsData, patientsData, exercisesData] = await Promise.all([
+        fetchDashboardStats(),
+        fetchPatientsList(search, incArchived),
+        fetchExercisesList(),
+      ]);
       setStats(statsData);
       setPatients(patientsData);
-      try {
-        const exercisesData = await fetchExercisesList();
-        if (exercisesData && exercisesData.length > 0) {
-          setExercisesList(exercisesData);
-        }
-      } catch (exErr) {
-        console.warn('Failed to load database exercises, using local defaults.', exErr);
-      }
+      setExercisesList(exercisesData);
     } catch (err) {
       console.error('Failed to load dashboard data. Using mock data.', err);
-      // Load fallback demo mock data
       setStats({
         total_patients: 12,
         total_sessions: 48,
         average_duration_seconds: 320,
         average_session_score: 91.5,
         recent_activity: [
-          { id: 1, title: 'Elbow Flexion Routine', duration_seconds: 180, avg_score: 94, created_at: new Date().toISOString() },
-          { id: 2, title: 'Shoulder Abduction Routine', duration_seconds: 240, avg_score: 88, created_at: new Date(Date.now() - 86400000).toISOString() },
-          { id: 3, title: 'Knee Extension', duration_seconds: 400, avg_score: 92, created_at: new Date(Date.now() - 172800000).toISOString() }
+          { id: 1, patient_id: 'PAT-000001', title: 'Elbow Flexion Routine', duration_seconds: 180, avg_score: 94, range_of_motion: 110, created_at: new Date().toISOString() },
+          { id: 2, patient_id: 'PAT-000002', title: 'Shoulder Abduction Routine', duration_seconds: 240, avg_score: 88, range_of_motion: 105, created_at: new Date(Date.now() - 86400000).toISOString() },
+          { id: 3, patient_id: 'PAT-000003', title: 'Knee Extension', duration_seconds: 400, avg_score: 92, range_of_motion: 95, created_at: new Date(Date.now() - 172800000).toISOString() }
         ]
       });
       setPatients([
-        { id: 'pat-1', user_id: 'pat-1', full_name: 'Sarah Connor', user: { first_name: 'Sarah', last_name: 'Connor', email: 'sarah.connor@gmail.com' }, diagnosis: 'Rotator Cuff Tear Rehabilitation', date_of_birth: '1985-11-10', phone: '+1 555-0199', is_archived: false },
-        { id: 'pat-2', user_id: 'pat-2', full_name: 'John Miller', user: { first_name: 'John', last_name: 'Miller', email: 'john.miller@yahoo.com' }, diagnosis: 'Post-Op ACL Knee Extension Plan', date_of_birth: '1992-04-18', phone: '+1 555-0142', is_archived: false },
-        { id: 'pat-3', user_id: 'pat-3', full_name: 'Kyle Reese', user: { first_name: 'Kyle', last_name: 'Reese', email: 'kyle.reese@outlook.com' }, diagnosis: 'General Elbow Flexion Check', date_of_birth: '1979-08-22', phone: '+1 555-0187', is_archived: false }
+        { id: 'pat-1', patient_id: 'PAT-000001', auth_user_id: 'pat-1', email: 'sarah.connor@gmail.com', full_name: 'Sarah Connor', diagnosis: 'Rotator Cuff Tear Rehabilitation', date_of_birth: '1985-11-10', phone: '+1 555-0199', is_archived: false, created_at: new Date().toISOString() },
+        { id: 'pat-2', patient_id: 'PAT-000002', auth_user_id: 'pat-2', email: 'john.miller@yahoo.com', full_name: 'John Miller', diagnosis: 'Post-Op ACL Knee Extension Plan', date_of_birth: '1992-04-18', phone: '+1 555-0142', is_archived: false, created_at: new Date().toISOString() },
+        { id: 'pat-3', patient_id: 'PAT-000003', auth_user_id: 'pat-3', email: 'kyle.reese@outlook.com', full_name: 'Kyle Reese', diagnosis: 'General Elbow Flexion Check', date_of_birth: '1979-08-22', phone: '+1 555-0187', is_archived: false, created_at: new Date().toISOString() }
       ]);
     } finally {
       setLoading(false);
     }
   };
 
+  const loadMotionReports = async () => {
+    setLoadingReports(true);
+    try {
+      const reports = await fetchMotionReports(undefined, 100);
+      setMotionReports(reports);
+    } catch (err) {
+      console.error('Failed to load motion reports, using dashboard recent activity.', err);
+      setMotionReports(stats?.recent_activity ?? []);
+    } finally {
+      setLoadingReports(false);
+    }
+  };
+
   useEffect(() => {
     loadPatientsAndStats(searchQuery, includeArchived);
   }, [searchQuery, includeArchived]);
+
+  useEffect(() => {
+    fetchAdminProfile()
+      .then((admin) => setClinicianName(admin.full_name))
+      .catch(() => setClinicianName(null));
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      loadMotionReports();
+    }
+  }, [activeTab]);
 
   // Load single patient details
   const loadPatientProfileDetail = async (patientId: string) => {
@@ -159,10 +194,11 @@ const AdminDashboard: React.FC = () => {
     } catch (err) {
       console.error('Failed to load detailed profile. Using mock details.', err);
       // Fallback details
-      const matched = patients.find(p => p.id === patientId || p.user_id === patientId);
+      const matched = patients.find(p => patientApiId(p) === patientId);
       setPatientDetail({
+        patient_id: patientId,
         user_id: patientId,
-        email: matched?.user?.email || 'patient@chosenmotion.com',
+        email: matched?.email || 'patient@chosenmotion.com',
         full_name: matched?.full_name || 'Sarah Connor',
         date_of_birth: matched?.date_of_birth || '1985-11-10',
         phone: matched?.phone || '+1 555-0199',
@@ -172,11 +208,26 @@ const AdminDashboard: React.FC = () => {
           { id: 1, patient_id: patientId, consent_level: 'Full Consent', granted_at: new Date().toISOString() }
         ],
         assignments: [
-          { id: 1, patient_id: patientId, exercise_id: 1, assigned_by: 'Clinician', assigned_at: new Date().toISOString(), is_completed: false, exercise: { name: 'Shoulder Abduction' } }
+          {
+            id: 1,
+            patient_id: patientId,
+            exercise_id: 1,
+            assigned_by: 'Clinician',
+            assigned_at: new Date().toISOString(),
+            is_completed: false,
+            exercise: { id: 1, name: 'Shoulder Abduction', created_at: new Date().toISOString() },
+          },
         ],
         sessions: [
-          { id: 1, patient_id: patientId, title: 'Elbow Flexion Routine', duration_seconds: 180, avg_score: 94, created_at: new Date().toISOString() }
-        ]
+          {
+            id: 1,
+            patient_id: patientId,
+            title: 'Elbow Flexion Routine',
+            duration_seconds: 180,
+            avg_score: 94,
+            created_at: new Date().toISOString(),
+          },
+        ],
       });
     } finally {
       setLoadingDetail(false);
@@ -225,7 +276,7 @@ const AdminDashboard: React.FC = () => {
         phone: editPhone || undefined,
         diagnosis: editDiagnosis || undefined
       });
-      setPatients(prev => prev.map(p => (p.id === selectedPatientId || p.user_id === selectedPatientId) ? updated : p));
+      setPatients(prev => prev.map(p => patientApiId(p) === selectedPatientId ? updated : p));
       setPatientDetail((prev: any) => prev ? { 
         ...prev, 
         full_name: editFullName, 
@@ -248,7 +299,7 @@ const AdminDashboard: React.FC = () => {
     if (!confirm('Are you sure you want to archive this patient profile?')) return;
     try {
       await archivePatient(patientId);
-      setPatients(prev => prev.map(p => (p.id === patientId || p.user_id === patientId) ? { ...p, is_archived: true } : p));
+      setPatients(prev => prev.map(p => patientApiId(p) === patientId ? { ...p, is_archived: true } : p));
       if (selectedPatientId === patientId) {
         setPatientDetail((prev: any) => prev ? { ...prev, is_archived: true } : null);
       }
@@ -257,7 +308,7 @@ const AdminDashboard: React.FC = () => {
     } catch (err: any) {
       console.error('Failed to archive patient', err);
       alert('Patient archived locally.');
-      setPatients(prev => prev.map(p => (p.id === patientId || p.user_id === patientId) ? { ...p, is_archived: true } : p));
+      setPatients(prev => prev.map(p => patientApiId(p) === patientId ? { ...p, is_archived: true } : p));
     }
   };
 
@@ -286,10 +337,15 @@ const AdminDashboard: React.FC = () => {
       alert('Exercise successfully added to catalog.');
     } catch (err: any) {
       console.warn('API creation failed. Saving locally.', err);
-      const mockCreated = {
+      const mockCreated: Exercise = {
         id: Date.now(),
-        ...payload,
-        joints: ['Shoulder R', 'Elbow R']
+        name: payload.name,
+        description: payload.description,
+        instructions: payload.instructions,
+        target_rom: payload.target_rom,
+        thumbnail_url: payload.thumbnail_url,
+        target_joints: payload.target_joints,
+        created_at: new Date().toISOString(),
       };
       setExercisesList(prev => [mockCreated, ...prev]);
       setCreateExModalOpen(false);
@@ -437,7 +493,7 @@ const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex flex-col items-end">
               <span className="text-sm font-semibold text-slate-800 dark:text-white">
-                {profile?.firstName ? `${profile.firstName} ${profile.lastName}` : profile?.email}
+                {profile?.firstName ? `${profile.firstName} ${profile.lastName}` : clinicianName || profile?.email}
               </span>
               <span className="text-[10px] bg-primary-100 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 px-2 py-0.5 rounded-full font-bold uppercase mt-0.5">
                 Clinician
@@ -546,21 +602,21 @@ const AdminDashboard: React.FC = () => {
                           <tr><td colSpan={3} className="py-8 text-center text-slate-400">No active patients registered.</td></tr>
                         ) : (
                           patients.filter(p => !p.is_archived).slice(0, 3).map(p => (
-                            <tr key={p.id || p.user_id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-all">
+                            <tr key={patientApiId(p)} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-all">
                               <td className="py-4 pl-2 flex items-center gap-3">
                                 <div className="h-8 w-8 rounded-full bg-primary-100 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold text-xs uppercase">
-                                  {p.user?.first_name?.[0] || p.full_name?.[0] || 'P'}
+                                  {p.full_name?.[0] || 'P'}
                                 </div>
                                 <div>
-                                  <span className="font-medium text-slate-900 dark:text-white block">{p.full_name || `${p.user?.first_name} ${p.user?.last_name}`}</span>
-                                  <span className="text-[10px] text-slate-400 block">{p.user?.email || p.email || 'no-email'}</span>
+                                  <span className="font-medium text-slate-900 dark:text-white block">{p.full_name}</span>
+                                  <span className="text-[10px] text-slate-400 block">{p.email || 'no-email'}</span>
                                 </div>
                               </td>
                               <td className="py-4 text-slate-600 dark:text-slate-300">
                                 {p.diagnosis || 'Rehabilitation evaluation needed'}
                               </td>
                               <td className="py-4">
-                                <button onClick={() => { setActiveTab('patients'); loadPatientProfileDetail(p.user_id || p.id); }} className="text-xs font-semibold text-primary-500 hover:underline">
+                                <button onClick={() => { setActiveTab('patients'); loadPatientProfileDetail(patientApiId(p)); }} className="text-xs font-semibold text-primary-500 hover:underline">
                                   Profile
                                 </button>
                               </td>
@@ -578,7 +634,7 @@ const AdminDashboard: React.FC = () => {
                   <div className="space-y-4">
                     {loading ? (
                       <p className="text-sm text-slate-400">Loading activities...</p>
-                    ) : stats?.recent_activity.map((act: any) => (
+                    ) : stats?.recent_activity.map((act) => (
                       <div key={act.id} className="flex justify-between items-center p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-all">
                         <div className="flex gap-3.5 items-center min-w-0">
                           <div className="h-9 w-9 bg-accent-500/10 rounded-xl text-accent-500 flex items-center justify-center shrink-0">
@@ -587,7 +643,7 @@ const AdminDashboard: React.FC = () => {
                           <div className="min-w-0 text-left">
                             <h4 className="font-medium text-sm text-slate-900 dark:text-white truncate">{act.title}</h4>
                             <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
-                              Accuracy: {act.avg_score || act.score}% | {new Date(act.created_at || act.completed_at).toLocaleDateString()}
+                              Accuracy: {sessionFormScore(act)}% | {new Date(sessionTimestamp(act)).toLocaleDateString()}
                             </p>
                           </div>
                         </div>
@@ -664,20 +720,20 @@ const AdminDashboard: React.FC = () => {
                         ) : (
                           patients.map(p => (
                             <tr 
-                              key={p.user_id || p.id} 
-                              className={`hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-all cursor-pointer ${selectedPatientId === (p.user_id || p.id) ? 'bg-primary-500/5 dark:bg-primary-500/10' : ''}`}
-                              onClick={() => loadPatientProfileDetail(p.user_id || p.id)}
+                              key={patientApiId(p)} 
+                              className={`hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-all cursor-pointer ${selectedPatientId === patientApiId(p) ? 'bg-primary-500/5 dark:bg-primary-500/10' : ''}`}
+                              onClick={() => loadPatientProfileDetail(patientApiId(p))}
                             >
                               <td className="py-4 pl-2">
                                 <div className="flex items-center gap-3">
                                   <div className="h-8 w-8 rounded-full bg-primary-100 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 flex items-center justify-center font-bold text-xs uppercase">
-                                    {p.full_name?.[0] || p.user?.first_name?.[0] || 'P'}
+                                    {p.full_name?.[0] || 'P'}
                                   </div>
                                   <div>
                                     <span className="font-semibold text-slate-900 dark:text-white block">
-                                      {p.full_name || `${p.user?.first_name} ${p.user?.last_name}`}
+                                      {p.full_name}
                                     </span>
-                                    <span className="text-[10px] text-slate-400 block">{p.user?.email || p.email || 'no-email'}</span>
+                                    <span className="text-[10px] text-slate-400 block">{p.email || 'no-email'}</span>
                                   </div>
                                 </div>
                               </td>
@@ -699,8 +755,8 @@ const AdminDashboard: React.FC = () => {
                                 <div className="flex items-center justify-end gap-2">
                                   <button
                                     onClick={() => {
-                                      setSelectedPatientId(p.user_id || p.id);
-                                      setEditFullName(p.full_name || `${p.user?.first_name || ''} ${p.user?.last_name || ''}`);
+                                      setSelectedPatientId(patientApiId(p));
+                                      setEditFullName(p.full_name || '');
                                       setEditDob(p.date_of_birth || '');
                                       setEditPhone(p.phone || '');
                                       setEditDiagnosis(p.diagnosis || '');
@@ -713,7 +769,7 @@ const AdminDashboard: React.FC = () => {
                                   </button>
                                   {!p.is_archived && (
                                     <button
-                                      onClick={() => handleArchivePatient(p.user_id || p.id)}
+                                      onClick={() => handleArchivePatient(patientApiId(p))}
                                       className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 rounded text-slate-500 hover:text-red-500"
                                       title="Archive Patient"
                                     >
@@ -779,7 +835,7 @@ const AdminDashboard: React.FC = () => {
                         {patientDetail.consents?.length === 0 ? (
                           <span className="text-xs text-slate-500 block">No consent recorded.</span>
                         ) : (
-                          patientDetail.consents.map((c: any) => (
+                          patientDetail.consents.map((c) => (
                             <div key={c.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-100/50 dark:border-slate-800/20 text-xs">
                               <span className="font-medium text-slate-700 dark:text-slate-300">{c.consent_level}</span>
                               <span className="text-2xs text-slate-400">{new Date(c.granted_at).toLocaleDateString()}</span>
@@ -794,7 +850,7 @@ const AdminDashboard: React.FC = () => {
                         {patientDetail.assignments?.length === 0 ? (
                           <span className="text-xs text-slate-500 block">No exercises assigned yet.</span>
                         ) : (
-                          patientDetail.assignments.map((a: any) => (
+                          patientDetail.assignments.map((a) => (
                             <div key={a.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-100/50 dark:border-slate-800/20 text-xs">
                               <span className="font-medium text-slate-700 dark:text-slate-300">{a.exercise?.name || 'Workout'}</span>
                               <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${a.is_completed ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600'}`}>
@@ -812,14 +868,14 @@ const AdminDashboard: React.FC = () => {
                           <span className="text-xs text-slate-500 block">No sessions recorded yet.</span>
                         ) : (
                           <div className="space-y-2">
-                            {patientDetail.sessions.map((s: any) => (
+                            {patientDetail.sessions.map((s) => (
                               <div key={s.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/20 p-2.5 rounded-xl border border-slate-100/50 dark:border-slate-800/20 text-xs hover:border-slate-200 dark:hover:border-slate-700 transition-all">
                                 <div className="text-left">
                                   <span className="font-medium text-slate-700 dark:text-slate-300 block truncate max-w-[140px]">{s.title}</span>
-                                  <span className="text-2xs text-slate-400 font-mono block mt-0.5">{new Date(s.created_at || s.completed_at).toLocaleDateString()}</span>
+                                  <span className="text-2xs text-slate-400 font-mono block mt-0.5">{new Date(sessionTimestamp(s)).toLocaleDateString()}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <span className="font-bold text-accent-500">{Math.round(s.avg_score || s.score || 0)}% Form</span>
+                                  <span className="font-bold text-accent-500">{sessionFormScore(s)}% Form</span>
                                   <button
                                     onClick={() => navigate(`/admin/session/${s.id}`)}
                                     className="p-1.5 bg-slate-100 hover:bg-primary-100 dark:bg-slate-800 dark:hover:bg-primary-950/40 text-slate-500 hover:text-primary-500 dark:text-slate-400 dark:hover:text-primary-400 rounded-lg transition-all font-bold"
@@ -1037,7 +1093,7 @@ const AdminDashboard: React.FC = () => {
 
                       <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/60">
                         <div className="flex flex-wrap gap-1">
-                          {(ex.joints || ex.target_joints?.list || ['Shoulder R']).map((j: string) => (
+                          {exerciseJointTags(ex).map((j) => (
                             <span key={j} className="text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded">
                               {j}
                             </span>
@@ -1236,26 +1292,31 @@ const AdminDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
-                      {stats?.recent_activity.map((act: any) => (
+                      {loadingReports ? (
+                        <tr><td colSpan={5} className="py-8 text-center text-slate-400">Loading motion reports...</td></tr>
+                      ) : motionReports.length === 0 ? (
+                        <tr><td colSpan={5} className="py-8 text-center text-slate-400">No workout sessions recorded yet.</td></tr>
+                      ) : (
+                      motionReports.map((act) => (
                         <tr key={act.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-all">
                           <td className="py-4 pl-2 font-medium text-slate-900 dark:text-white">
                             {act.title}
                           </td>
                           <td className="py-4 text-slate-500 dark:text-slate-400">
-                            {new Date(act.created_at || act.completed_at).toLocaleString()}
+                            {new Date(sessionTimestamp(act)).toLocaleString()}
                           </td>
                           <td className="py-4 text-slate-600 dark:text-slate-300 font-semibold">
-                            {Math.round(act.range_of_motion || act.rom || 110)}°
+                            {sessionRom(act)}°
                           </td>
                           <td className="py-4">
                             <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
-                              (act.avg_score || act.score || 0) >= 90 
+                              sessionFormScore(act) >= 90 
                                 ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400' 
-                                : (act.avg_score || act.score || 0) >= 75
+                                : sessionFormScore(act) >= 75
                                   ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400'
                                   : 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400'
                             }`}>
-                              {Math.round(act.avg_score || act.score || 0)}% Accuracy
+                              {sessionFormScore(act)}% Accuracy
                             </span>
                           </td>
                           <td className="py-4 text-right pr-2">
@@ -1269,7 +1330,7 @@ const AdminDashboard: React.FC = () => {
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      )))}
                     </tbody>
                   </table>
                 </div>

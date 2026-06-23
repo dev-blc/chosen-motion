@@ -5,6 +5,7 @@ from typing import List
 from app.core.database import get_db
 from app.core.security import get_current_user, require_patient, UserPayload
 from app.models.models import Patient, MotionSession as DbSession, MotionMetric, ExerciseAssignment, Exercise, MotionFrame
+from app.services.query_helpers import session_load_options, assignment_load_options
 from app.schemas.schemas import (
     PatientResponse, 
     PatientUpdate, 
@@ -213,7 +214,13 @@ def list_my_sessions(
     if not patient:
         return []
     
-    sessions = db.query(DbSession).filter(DbSession.patient_id == patient.patient_id).order_by(DbSession.completed_at.desc()).all()
+    sessions = (
+        db.query(DbSession)
+        .filter(DbSession.patient_id == patient.patient_id)
+        .options(*session_load_options())
+        .order_by(DbSession.completed_at.desc())
+        .all()
+    )
     return sessions
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
@@ -232,10 +239,15 @@ def get_session_detail(
             detail="Patient profile not found."
         )
 
-    session = db.query(DbSession).filter(
-        DbSession.id == session_id,
-        DbSession.patient_id == patient.patient_id
-    ).first()
+    session = (
+        db.query(DbSession)
+        .filter(
+            DbSession.id == session_id,
+            DbSession.patient_id == patient.patient_id
+        )
+        .options(*session_load_options())
+        .first()
+    )
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -255,7 +267,11 @@ def list_my_assignments(
     if not patient:
         return []
 
-    assignments = db.query(ExerciseAssignment).filter(
-        ExerciseAssignment.patient_id == patient.patient_id
-    ).order_by(ExerciseAssignment.assigned_at.desc()).all()
+    assignments = (
+        db.query(ExerciseAssignment)
+        .filter(ExerciseAssignment.patient_id == patient.patient_id)
+        .options(*assignment_load_options())
+        .order_by(ExerciseAssignment.assigned_at.desc())
+        .all()
+    )
     return assignments

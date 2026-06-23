@@ -216,22 +216,6 @@ class ExerciseAssignmentResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# Detailed Patient History Response
-class PatientDetailFullResponse(BaseModel):
-    user_id: str
-    email: str
-    full_name: str
-    date_of_birth: Optional[date] = None
-    phone: Optional[str] = None
-    diagnosis: Optional[str] = None
-    is_archived: bool
-    consents: List[ConsentResponse] = []
-    assignments: List[ExerciseAssignmentResponse] = []
-    sessions: List[SessionResponse] = []
-
-    class Config:
-        from_attributes = True
-
 # ==========================================
 # Motion Telemetry Schemas
 # ==========================================
@@ -312,7 +296,27 @@ class SessionCreate(SessionBase):
 class SessionResponse(SessionBase):
     id: int
     patient_id: str
+    exercise_id: Optional[int] = None
+    score: Optional[float] = None
+    completed_at: Optional[datetime] = None
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Detailed Patient History Response
+class PatientDetailFullResponse(BaseModel):
+    patient_id: str
+    user_id: str
+    email: str
+    full_name: str
+    date_of_birth: Optional[date] = None
+    phone: Optional[str] = None
+    diagnosis: Optional[str] = None
+    is_archived: bool
+    consents: List[ConsentResponse] = []
+    assignments: List[ExerciseAssignmentResponse] = []
+    sessions: List[SessionResponse] = []
 
     class Config:
         from_attributes = True
