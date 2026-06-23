@@ -13,7 +13,7 @@ from app.schemas.schemas import (
     UserSignUpRequest, 
     UserLoginRequest, 
     TokenResponse,
-    AdminResponse
+    AdminProfileResponse
 )
 
 router = APIRouter()
@@ -410,7 +410,7 @@ def login_user(
         admin_id=admin_id
     )
 
-@router.get("/admin/profile", response_model=AdminResponse)
+@router.get("/admin/profile", response_model=AdminProfileResponse)
 def get_admin_profile(
     current_user: UserPayload = Depends(get_current_user),
     db: Session = Depends(get_db)

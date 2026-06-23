@@ -34,7 +34,7 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True
 
-class AdminResponse(BaseModel):
+class AdminProfileResponse(BaseModel):
     id: uuid.UUID
     admin_id: str
     auth_user_id: uuid.UUID
@@ -60,7 +60,7 @@ class AdminUpdate(BaseModel):
     department: Optional[str] = None
     access_level: Optional[str] = None
 
-class AdminResponse(AdminBase):
+class AdminWithUserResponse(AdminBase):
     id: str
     user: UserResponse
 
@@ -100,7 +100,7 @@ class PatientUpdate(BaseModel):
 class PatientResponse(PatientBase):
     id: uuid.UUID
     patient_id: str
-    auth_user_id: str
+    auth_user_id: uuid.UUID
     email: EmailStr
     full_name: str
     phone: Optional[str] = None
