@@ -2,11 +2,12 @@ import uuid
 import requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from app.core.database import get_db
 from app.core.security import get_current_user, UserPayload
 from app.core.config import settings
 from app.models.models import User, Patient, Admin
+from app.services.patient_resolver import resolve_patient_for_user, to_uuid
 from app.schemas.schemas import (
     UserResponse, 
     UserCreate, 
@@ -98,7 +99,9 @@ def get_my_profile(
         current_user_uuid = uuid.UUID(str(current_user.id))
     except (ValueError, TypeError):
         current_user_uuid = current_user.id
-    db_user = db.query(User).filter(User.auth_user_id == current_user_uuid).first()
+    db_user = db.query(User).filter(
+        or_(User.auth_user_id == current_user_uuid, User.id == current_user_uuid)
+    ).first()
     if not db_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -135,11 +138,21 @@ def sync_user(
         resolved_uuid = resolved_id
 
     # Check if user already exists
-    db_user = db.query(User).filter(User.auth_user_id == resolved_uuid).first()
+    db_user = db.query(User).filter(
+        or_(User.auth_user_id == resolved_uuid, User.id == resolved_uuid)
+    ).first()
     if db_user:
         db_user.role = user_data.role
+        if db_user.auth_user_id != resolved_uuid:
+            db_user.auth_user_id = resolved_uuid
         db.commit()
         db.refresh(db_user)
+        # Relink patient record when admin created profile before first login
+        if user_data.role.lower() == "patient":
+            patient = db.query(Patient).filter(Patient.email == user_data.email).first()
+            if patient and patient.auth_user_id != resolved_uuid:
+                patient.auth_user_id = resolved_uuid
+                db.commit()
         return db_user
 
     # Create new User
@@ -178,6 +191,8 @@ def sync_user(
                 full_name="Patient"
             )
             db.add(patient_profile)
+        elif db_patient.auth_user_id != new_user.auth_user_id:
+            db_patient.auth_user_id = new_user.auth_user_id
 
     db.commit()
     db.refresh(new_user)
@@ -423,7 +438,9 @@ def get_admin_profile(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Admin permissions required."
         )
-    admin = db.query(Admin).filter(Admin.auth_user_id == current_user.id).first()
+    admin = db.query(Admin).filter(
+        or_(Admin.auth_user_id == to_uuid(current_user.id), Admin.id == to_uuid(current_user.id))
+    ).first()
     if not admin:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

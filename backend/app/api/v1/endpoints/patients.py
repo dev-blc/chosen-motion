@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_patient, UserPayload
 from app.models.models import Patient, MotionSession as DbSession, MotionMetric, ExerciseAssignment, Exercise, MotionFrame
 from app.services.query_helpers import session_load_options, assignment_load_options
+from app.services.patient_resolver import get_patient_for_user, resolve_patient_for_user
 from app.schemas.schemas import (
     PatientResponse, 
     PatientUpdate, 
@@ -17,12 +18,6 @@ from app.schemas.schemas import (
 
 router = APIRouter()
 
-def get_user_uuid(user_id: str):
-    try:
-        return uuid.UUID(str(user_id))
-    except (ValueError, TypeError):
-        return user_id
-
 @router.get("/profile", response_model=PatientResponse)
 def get_patient_profile(
     current_user: UserPayload = Depends(require_patient),
@@ -31,13 +26,7 @@ def get_patient_profile(
     """
     Get the current patient's clinical profile.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient profile not found."
-        )
-    return patient
+    return get_patient_for_user(current_user, db)
 
 @router.put("/profile", response_model=PatientResponse)
 def update_patient_profile(
@@ -48,12 +37,7 @@ def update_patient_profile(
     """
     Update the current patient's medical metadata.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient profile not found."
-        )
+    patient = get_patient_for_user(current_user, db)
     
     if profile_data.full_name is not None:
         patient.full_name = profile_data.full_name
@@ -89,11 +73,13 @@ def get_patient_by_id(
         )
     
     # Restrict: Patient can only view their own profile, Clinician/Admin can view all
-    if current_user.role.lower() != "admin" and str(patient.auth_user_id) != str(current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You do not have permission to view this profile."
-        )
+    if current_user.role.lower() != "admin":
+        own_patient = resolve_patient_for_user(current_user, db, link_auth=False)
+        if not own_patient or own_patient.patient_id != patient.patient_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. You do not have permission to view this profile."
+            )
         
     return patient
 
@@ -106,13 +92,7 @@ def upload_motion_session(
     """
     Upload a completed motion tracking session, complete with coordinate streams.
     """
-    # Verify patient exists
-    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient record not found. Please sync your account."
-        )
+    patient = get_patient_for_user(current_user, db)
 
     # Resolve exercise_id and rules by matching exercise title if possible
     exercise_id = None
@@ -210,7 +190,7 @@ def list_my_sessions(
     """
     List all motion tracking sessions recorded by the authenticated patient.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
+    patient = resolve_patient_for_user(current_user, db)
     if not patient:
         return []
     
@@ -232,12 +212,7 @@ def get_session_detail(
     """
     Get detailed telemetry metrics and coordinates for a specific recording session.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient profile not found."
-        )
+    patient = get_patient_for_user(current_user, db)
 
     session = (
         db.query(DbSession)
@@ -263,7 +238,7 @@ def list_my_assignments(
     """
     List all exercise assignments assigned to the authenticated patient.
     """
-    patient = db.query(Patient).filter(Patient.auth_user_id == get_user_uuid(current_user.id)).first()
+    patient = resolve_patient_for_user(current_user, db)
     if not patient:
         return []
 

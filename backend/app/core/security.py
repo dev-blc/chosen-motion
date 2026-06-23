@@ -3,9 +3,11 @@ from functools import lru_cache
 from jwt import PyJWKClient
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from app.core.config import settings
+from app.core.database import get_db
 
 security = HTTPBearer()
 
@@ -146,13 +148,24 @@ def require_admin(user: UserPayload = Depends(get_current_user)) -> UserPayload:
         )
     return user
 
-def require_patient(user: UserPayload = Depends(get_current_user)) -> UserPayload:
+def require_patient(
+    user: UserPayload = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserPayload:
     """
     Restricts access to Patient role users.
+    Also allows authenticated users who have a patient record in the database
+    (e.g. admin-created profiles before first login sync).
     """
-    if user.role.lower() != "patient":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Patient permissions required."
-        )
-    return user
+    if user.role.lower() == "patient":
+        return user
+
+    from app.services.patient_resolver import resolve_patient_for_user
+
+    if resolve_patient_for_user(user, db, link_auth=False):
+        return user
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access denied. Patient permissions required."
+    )
