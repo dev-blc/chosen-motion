@@ -7,8 +7,12 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend
+  Legend,
+  AreaChart,
+  Area
 } from 'recharts';
+import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
+import { generateSessionInsights, analyzeSquatSession, formatMs } from '../utils/sessionMetrics';
 
 interface MotionFrame {
   timestamp_millis: number;
@@ -29,25 +33,29 @@ interface SessionAnalyticsProps {
   frames?: MotionFrame[];
   history?: HistoricalSession[];
   exerciseName?: string;
+  errorCount?: number;
 }
 
 export const SessionAnalytics: React.FC<SessionAnalyticsProps> = ({
   frames = [],
   history = [],
-  exerciseName = 'Exercise'
+  exerciseName = 'Exercise',
+  errorCount = 0
 }) => {
-  
-  // 1. Process current session frames for joint angle time series
   const activeJointKey = exerciseName.toLowerCase().includes('squat')
     ? 'squat'
-    : exerciseName.toLowerCase().includes('shoulder') 
-      ? 'shoulder' 
-      : exerciseName.toLowerCase().includes('knee') 
-        ? 'knee' 
+    : exerciseName.toLowerCase().includes('shoulder')
+      ? 'shoulder'
+      : exerciseName.toLowerCase().includes('knee')
+        ? 'knee'
         : 'elbow';
 
-  const calculateAngleForJoint = (coords: Record<string, number[]>, joint: 'shoulder' | 'elbow' | 'hip' | 'knee', side: 'l' | 'r' = 'r') => {
-    const calculateAngle = (a: number[], b: number[], c: number[]) => {
+  const calculateAngleForJoint = (
+    coords: Record<string, number[]>,
+    joint: 'shoulder' | 'elbow' | 'hip' | 'knee',
+    side: 'l' | 'r' = 'r'
+  ) => {
+    const calcAngle = (a: number[], b: number[], c: number[]) => {
       const baX = a[0] - b[0];
       const baY = a[1] - b[1];
       const bcX = c[0] - b[0];
@@ -67,44 +75,43 @@ export const SessionAnalytics: React.FC<SessionAnalyticsProps> = ({
     const k = coords[`knee_${side}`];
     const a = coords[`ankle_${side}`];
 
-    if (joint === 'shoulder' && h && s && e) return calculateAngle(h, s, e);
-    if (joint === 'elbow' && s && e && w) return calculateAngle(s, e, w);
-    if (joint === 'hip' && s && h && k) return calculateAngle(s, h, k);
-    if (joint === 'knee' && h && k && a) return calculateAngle(h, k, a);
+    if (joint === 'shoulder' && h && s && e) return calcAngle(h, s, e);
+    if (joint === 'elbow' && s && e && w) return calcAngle(s, e, w);
+    if (joint === 'hip' && s && h && k) return calcAngle(s, h, k);
+    if (joint === 'knee' && h && k && a) return calcAngle(h, k, a);
     return 0;
   };
 
-  const currentSessionData = frames.map(f => {
+  const currentSessionData = frames.map((f) => {
     const coords = f.joint_coordinates;
     const time = (f.timestamp_millis / 1000).toFixed(1);
-    
+
     if (activeJointKey === 'squat') {
       const kneeL = calculateAngleForJoint(coords, 'knee', 'l');
       const kneeR = calculateAngleForJoint(coords, 'knee', 'r');
       const hipL = calculateAngleForJoint(coords, 'hip', 'l');
       const hipR = calculateAngleForJoint(coords, 'hip', 'r');
+      const symmetry = Math.max(0, Math.round(100 - Math.abs(kneeL - kneeR) * 3));
       return {
         time,
         'Knee Angle': Math.round((kneeL + kneeR) / 2),
-        'Hip Angle': Math.round((hipL + hipR) / 2)
+        'Hip Angle': Math.round((hipL + hipR) / 2),
+        Symmetry: symmetry
       };
-    } else {
-      const angle = activeJointKey === 'shoulder' 
+    }
+
+    const angle =
+      activeJointKey === 'shoulder'
         ? calculateAngleForJoint(coords, 'shoulder')
         : activeJointKey === 'knee'
           ? calculateAngleForJoint(coords, 'knee')
           : calculateAngleForJoint(coords, 'elbow');
-      return {
-        time,
-        Angle: angle
-      };
-    }
+    return { time, Angle: angle };
   });
 
-  // 2. Process history data for progress trend
   const trendData = [...history]
-    .reverse() // show chronological order (oldest to newest)
-    .map(s => ({
+    .reverse()
+    .map((s) => ({
       date: new Date(s.completed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       ROM: Math.round(s.range_of_motion),
       Accuracy: Math.round(s.score),
@@ -112,42 +119,123 @@ export const SessionAnalytics: React.FC<SessionAnalyticsProps> = ({
       Symmetry: Math.round(s.symmetry > 2.0 ? s.symmetry : s.symmetry * 100)
     }));
 
+  const insights = generateSessionInsights(frames, exerciseName, errorCount);
+  const squatAnalysis = activeJointKey === 'squat' ? analyzeSquatSession(frames) : null;
+
+  const getInsightIcon = (status: 'good' | 'warn' | 'bad') => {
+    switch (status) {
+      case 'good':
+        return <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />;
+      case 'warn':
+        return <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />;
+      case 'bad':
+        return <XCircle className="h-4 w-4 text-rose-400 flex-shrink-0" />;
+    }
+  };
+
+  const getInsightBorder = (status: 'good' | 'warn' | 'bad') => {
+    switch (status) {
+      case 'good':
+        return 'border-emerald-500/20 bg-emerald-500/5';
+      case 'warn':
+        return 'border-amber-500/20 bg-amber-500/5';
+      case 'bad':
+        return 'border-rose-500/20 bg-rose-500/5';
+    }
+  };
+
+  const chartTooltipStyle = {
+    backgroundColor: '#0f172a',
+    borderColor: '#334155',
+    borderRadius: '8px',
+    color: '#fff'
+  };
 
   return (
-    <div className="flex flex-col gap-6 w-full">
-      
-      {/* Current Session Waveform Chart */}
+    <div className="flex flex-col gap-5 w-full pb-2">
+      {/* Session insights */}
+      {insights.length > 0 && (
+        <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl flex flex-col text-left">
+          <div className="flex flex-col gap-1 mb-4">
+            <h4 className="text-sm font-bold text-white uppercase tracking-wider">Session Insights</h4>
+            <p className="text-xs text-slate-400">Detailed analysis derived from per-frame telemetry data</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {insights.map((insight) => (
+              <div
+                key={insight.label}
+                className={`flex items-start gap-3 p-3.5 rounded-xl border ${getInsightBorder(insight.status)}`}
+              >
+                {getInsightIcon(insight.status)}
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      {insight.label}
+                    </span>
+                    <span className="text-sm font-bold text-white font-mono">{insight.value}</span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">{insight.detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tempo breakdown for squats */}
+      {squatAnalysis && squatAnalysis.tutMs > 0 && (
+        <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl flex flex-col text-left">
+          <div className="flex flex-col gap-1 mb-4">
+            <h4 className="text-sm font-bold text-white uppercase tracking-wider">Tempo Analysis</h4>
+            <p className="text-xs text-slate-400">Eccentric vs concentric phase breakdown across all reps</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 text-center">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Eccentric</span>
+              <span className="text-lg font-bold text-amber-400 mt-1 block">{formatMs(squatAnalysis.eccentricMs)}</span>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 text-center">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Concentric</span>
+              <span className="text-lg font-bold text-cyan-400 mt-1 block">{formatMs(squatAnalysis.concentricMs)}</span>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-850 text-center">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Total TUT</span>
+              <span className="text-lg font-bold text-violet-400 mt-1 block">{formatMs(squatAnalysis.tutMs)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Joint angle waveform */}
       {currentSessionData.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col text-left shadow-lg">
+        <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl flex flex-col text-left">
           <div className="flex flex-col gap-1 mb-4">
             <h4 className="text-sm font-bold text-white uppercase tracking-wider">Joint Angle Waveform</h4>
-            <p className="text-xs text-slate-400">Flexion / extension cycles tracked across the session duration (seconds)</p>
+            <p className="text-xs text-slate-400">Flexion / extension cycles across session duration (seconds)</p>
           </div>
-          <div className="h-64 w-full">
+          <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={currentSessionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} />
                 <YAxis stroke="#64748b" fontSize={10} tickLine={false} domain={[0, 180]} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
-                  labelFormatter={(label) => `Time: ${label}s`}
-                />
-                {activeJointKey === 'squat' && <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />}
-                
+                <Tooltip contentStyle={chartTooltipStyle} labelFormatter={(label) => `Time: ${label}s`} />
+                {activeJointKey === 'squat' && (
+                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                )}
                 {activeJointKey === 'squat' ? (
                   <>
                     <Line type="monotone" dataKey="Knee Angle" stroke="#34d399" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
                     <Line type="monotone" dataKey="Hip Angle" stroke="#22d3ee" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
                   </>
                 ) : (
-                  <Line 
-                    type="monotone" 
-                    dataKey="Angle" 
-                    stroke="#22d3ee" 
-                    strokeWidth={2.5} 
+                  <Line
+                    type="monotone"
+                    dataKey="Angle"
+                    stroke="#22d3ee"
+                    strokeWidth={2.5}
                     dot={false}
-                    activeDot={{ r: 6, strokeWidth: 0, fill: '#22d3ee' }} 
+                    activeDot={{ r: 6, strokeWidth: 0, fill: '#22d3ee' }}
                   />
                 )}
               </LineChart>
@@ -156,56 +244,84 @@ export const SessionAnalytics: React.FC<SessionAnalyticsProps> = ({
         </div>
       )}
 
-
-      {/* Historical Trends Charts */}
-      {trendData.length > 1 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* ROM & Accuracy Trend */}
-          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col text-left shadow-lg">
-            <div className="flex flex-col gap-1 mb-4">
-              <h4 className="text-sm font-bold text-white uppercase tracking-wider">ROM & Form Progress</h4>
-              <p className="text-xs text-slate-400">Range of Motion angles and Form accuracy percentages over time</p>
-            </div>
-            <div className="h-60 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }} />
-                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
-                  <Line type="monotone" dataKey="ROM" name="ROM (deg)" stroke="#22d3ee" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                  <Line type="monotone" dataKey="Accuracy" name="Accuracy (%)" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+      {/* Symmetry waveform for squats */}
+      {activeJointKey === 'squat' && currentSessionData.length > 0 && (
+        <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl flex flex-col text-left">
+          <div className="flex flex-col gap-1 mb-4">
+            <h4 className="text-sm font-bold text-white uppercase tracking-wider">Bilateral Symmetry Trend</h4>
+            <p className="text-xs text-slate-400">Left/right knee coordination over time — dips indicate imbalance</p>
           </div>
-
-          {/* Speed & Symmetry Trend */}
-          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col text-left shadow-lg">
-            <div className="flex flex-col gap-1 mb-4">
-              <h4 className="text-sm font-bold text-white uppercase tracking-wider">Speed & Symmetry Trends</h4>
-              <p className="text-xs text-slate-400">Mean movement speed and bilateral coordination symmetry percent</p>
-            </div>
-            <div className="h-60 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }} />
-                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
-                  <Line type="monotone" dataKey="Speed" name="Speed (deg/s)" stroke="#34d399" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                  <Line type="monotone" dataKey="Symmetry" name="Symmetry (%)" stroke="#fb7185" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+          <div className="h-44 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={currentSessionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="symmetryGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} />
+                <YAxis stroke="#64748b" fontSize={10} tickLine={false} domain={[60, 100]} />
+                <Tooltip contentStyle={chartTooltipStyle} labelFormatter={(label) => `Time: ${label}s`} />
+                <Area
+                  type="monotone"
+                  dataKey="Symmetry"
+                  stroke="#a78bfa"
+                  strokeWidth={2}
+                  fill="url(#symmetryGrad)"
+                  dot={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-
         </div>
       )}
 
+      {/* Historical trends */}
+      {trendData.length > 1 && (
+        <div className="grid grid-cols-1 gap-5">
+          <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl flex flex-col text-left">
+            <div className="flex flex-col gap-1 mb-4">
+              <h4 className="text-sm font-bold text-white uppercase tracking-wider">ROM & Form Progress</h4>
+              <p className="text-xs text-slate-400">Range of motion and accuracy across prior sessions</p>
+            </div>
+            <div className="h-52 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
+                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                  <Tooltip contentStyle={chartTooltipStyle} />
+                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                  <Line type="monotone" dataKey="ROM" name="ROM (deg)" stroke="#22d3ee" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="Accuracy" name="Accuracy (%)" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl flex flex-col text-left">
+            <div className="flex flex-col gap-1 mb-4">
+              <h4 className="text-sm font-bold text-white uppercase tracking-wider">Speed & Symmetry Trends</h4>
+              <p className="text-xs text-slate-400">Movement speed and bilateral coordination over time</p>
+            </div>
+            <div className="h-52 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
+                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                  <Tooltip contentStyle={chartTooltipStyle} />
+                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                  <Line type="monotone" dataKey="Speed" name="Speed (deg/s)" stroke="#34d399" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="Symmetry" name="Symmetry (%)" stroke="#fb7185" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

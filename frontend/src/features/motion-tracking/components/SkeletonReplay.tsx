@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, RotateCcw } from 'lucide-react';
 import { calculateJointAngle } from '../utils/poseProcessor';
+import {
+  getSquatDepthPercent,
+  getSquatDepthLabel,
+  getBalanceSplit,
+  getCurrentRepTUT,
+  formatMs
+} from '../utils/sessionMetrics';
 
 interface MotionFrame {
   id: string;
@@ -390,6 +397,31 @@ export const SkeletonReplay: React.FC<SkeletonReplayProps> = ({ frames, exercise
     ? Math.round(currentFrame.sensor_signals.confidence * 100) 
     : 95;
 
+  const isSquat = exerciseName.toLowerCase().includes('squat');
+  const kneeAvg = Math.round((angles.knee_l + angles.knee_r) / 2);
+  const hipAvg = Math.round((angles.hip_l + angles.hip_r) / 2);
+  const depthPercent = getSquatDepthPercent(kneeAvg);
+  const depthLabel = getSquatDepthLabel(kneeAvg);
+  const balance = getBalanceSplit(angles.knee_l, angles.knee_r);
+  const repTut = getCurrentRepTUT(frames, currentFrameIdx, exerciseName);
+
+  const telemetryCards = [
+    { label: 'Current Frame', value: `#${currentFrameIdx + 1}`, color: 'text-white' },
+    { label: 'Current Rep', value: `${repsAtFrame[currentFrameIdx] ?? 0}`, color: 'text-cyan-400' },
+    { label: 'Knee / Hip', value: `${kneeAvg}° / ${hipAvg}°`, color: 'text-emerald-400' },
+    { label: 'Torso Lean', value: `${angles.torso}°`, color: 'text-orange-400' },
+    { label: 'Symmetry', value: `${getSymmetry()}%`, color: 'text-violet-400' },
+    { label: 'Accuracy', value: `${accuracy}%`, color: 'text-white' },
+    { label: 'Speed', value: `${getCurrentSpeed()} °/s`, color: 'text-cyan-400' },
+    ...(isSquat ? [
+      { label: 'Squat Depth', value: `${depthPercent}%`, color: depthPercent >= 70 ? 'text-emerald-400' : 'text-amber-400' },
+      { label: 'Depth Status', value: depthLabel, color: depthLabel === 'Below Parallel' || depthLabel === 'Parallel' ? 'text-emerald-400' : 'text-amber-400' },
+      { label: 'Time Under Tension', value: formatMs(repTut.tutMs), color: 'text-violet-400' },
+      { label: 'Movement Phase', value: repTut.phase, color: repTut.phase === 'Eccentric' ? 'text-amber-400' : repTut.phase === 'Concentric' ? 'text-cyan-400' : 'text-slate-300' },
+      { label: 'Balance L / R', value: `${balance.left}% / ${balance.right}%`, color: Math.abs(balance.left - balance.right) <= 8 ? 'text-emerald-400' : 'text-rose-400' },
+    ] : []),
+  ];
+
   const formattedTime = (ms: number) => {
     const totalSeconds = ms / 1000;
     const minutes = Math.floor(totalSeconds / 60);
@@ -519,46 +551,20 @@ export const SkeletonReplay: React.FC<SkeletonReplayProps> = ({ frames, exercise
       </div>
 
       {/* REPLAY DISPLAY PANEL */}
-      <div className="w-full max-w-2xl mt-5 p-4 rounded-xl bg-slate-900 border border-slate-800/80 text-left">
-        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Replay Telemetry Deck</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
-          <div className="p-3 bg-slate-950 rounded-lg border border-slate-850">
-            <span className="text-[10px] text-slate-500 block">Current Frame</span>
-            <span className="text-white font-bold block mt-1">#{currentFrameIdx + 1}</span>
-          </div>
-          
-          <div className="p-3 bg-slate-950 rounded-lg border border-slate-850">
-            <span className="text-[10px] text-slate-500 block">Current Rep</span>
-            <span className="text-cyan-400 font-bold block mt-1">{repsAtFrame[currentFrameIdx] ?? 0}</span>
-          </div>
+      <div className="w-full max-w-2xl mt-5 p-5 rounded-xl bg-slate-900 border border-slate-800/80 text-left">
+        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Replay Telemetry Deck</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs font-mono">
+          {telemetryCards.map((card) => (
+            <div key={card.label} className="p-3.5 bg-slate-950 rounded-xl border border-slate-850 min-h-[72px] flex flex-col justify-between">
+              <span className="text-[10px] text-slate-500 leading-tight">{card.label}</span>
+              <span className={`font-bold mt-1.5 ${card.color}`}>{card.value}</span>
+            </div>
+          ))}
 
-          <div className="p-3 bg-slate-950 rounded-lg border border-slate-850">
-            <span className="text-[10px] text-slate-500 block">Knee / Hip Angle</span>
-            <span className="text-emerald-400 font-bold block mt-1">
-              {Math.round((angles.knee_l + angles.knee_r) / 2)}° / {Math.round((angles.hip_l + angles.hip_r) / 2)}°
-            </span>
-          </div>
-
-          <div className="p-3 bg-slate-950 rounded-lg border border-slate-850">
-            <span className="text-[10px] text-slate-500 block">Torso Angle</span>
-            <span className="text-orange-400 font-bold block mt-1">{angles.torso}°</span>
-          </div>
-
-          <div className="p-3 bg-slate-950 rounded-lg border border-slate-850">
-            <span className="text-[10px] text-slate-500 block">Symmetry / Accuracy</span>
-            <span className="text-white font-bold block mt-1">{getSymmetry()}% / {accuracy}%</span>
-          </div>
-
-          <div className="p-3 bg-slate-950 rounded-lg border border-slate-850">
-            <span className="text-[10px] text-slate-500 block">Current Speed</span>
-            <span className="text-cyan-400 font-bold block mt-1">{getCurrentSpeed()} °/s</span>
-          </div>
-
-
-          <div className="p-3 bg-slate-950 rounded-lg border border-slate-850 col-span-1 md:col-span-3">
-            <span className="text-[10px] text-slate-500 block">Active Form Alerts</span>
-            <span className={`font-bold block mt-1 ${activeErrors.length > 0 ? 'text-red-400' : 'text-green-400'}`}>
-              {activeErrors.length > 0 ? activeErrors.join(', ') : 'None - Excellent posture'}
+          <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-850 col-span-2 sm:col-span-3 lg:col-span-4 min-h-[72px] flex flex-col justify-between">
+            <span className="text-[10px] text-slate-500">Active Form Alerts</span>
+            <span className={`font-bold mt-1.5 ${activeErrors.length > 0 ? 'text-red-400' : 'text-green-400'}`}>
+              {activeErrors.length > 0 ? activeErrors.join(' · ') : 'None — excellent posture'}
             </span>
           </div>
         </div>
