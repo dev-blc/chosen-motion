@@ -28,7 +28,12 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
-  AlertTriangle
+  AlertTriangle,
+  MapPin,
+  Video,
+  MessageSquare,
+  CalendarPlus,
+  XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatisticCard } from '@/components/ui/Card';
@@ -123,13 +128,102 @@ const PatientDashboard: React.FC = () => {
   const [assignments, setAssignments] = useState<ExerciseAssignment[]>([]);
   const [clinicalProfile, setClinicalProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [mobileTab, setMobileTab] = useState<'overview' | 'exercises' | 'progress' | 'profile'>('overview');
+  const [mobileTab, setMobileTab] = useState<'overview' | 'exercises' | 'progress' | 'appointments' | 'profile'>('overview');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedAssignment, setSelectedAssignment] = useState<ExerciseAssignment | null>(null);
   const [tipsOpen, setTipsOpen] = useState(true);
   const [mistakesOpen, setMistakesOpen] = useState(false);
   const [musclesOpen, setMusclesOpen] = useState(false);
   const navigate = useNavigate();
+
+  // Mock appointments telemetry list
+  const [appointmentsList, setAppointmentsList] = useState<any[]>([
+    {
+      id: 1,
+      date: '2026-06-25', // Today
+      time: '2:00 PM',
+      practitioner: 'Dr. Luis R',
+      clinic: 'Chelsea Clinic',
+      status: 'upcoming',
+      type: 'Follow-up session',
+      notes: 'Today\'s focus: Review joint Range of Motion (ROM) bounds, discuss motion tracking feedback stability levels, and calibrate camera distance settings.',
+      joinUrl: 'https://zoom.us/j/123456789'
+    },
+    {
+      id: 2,
+      date: '2026-06-29',
+      time: '10:00 AM',
+      practitioner: 'Dr. Luis R',
+      clinic: 'Chelsea Clinic',
+      status: 'upcoming',
+      type: 'Progress review',
+      notes: 'Bi-weekly evaluation of motion capturing telemetry data streams uploaded during practice.',
+      joinUrl: 'https://zoom.us/j/123456789'
+    },
+    {
+      id: 3,
+      date: '2026-07-03',
+      time: '4:00 PM',
+      practitioner: 'Dr. Luis R',
+      clinic: 'Chelsea Clinic',
+      status: 'rescheduled',
+      type: 'Video check-in',
+      notes: 'Follow-up consultation regarding exercise comfort levels and lunge skeleton feedback.',
+      joinUrl: 'https://zoom.us/j/987654321'
+    },
+    {
+      id: 4,
+      date: '2026-06-20', // Past
+      time: '12:30 PM',
+      practitioner: 'Dr. Luis R',
+      clinic: 'Nottingham Clinic',
+      status: 'completed',
+      type: 'Follow-up session',
+      notes: 'Patient is making good progress with shoulder abduction exercises. Target range increased to 135 degrees. Continue daily tracking.'
+    },
+    {
+      id: 5,
+      date: '2026-06-19', // Past
+      time: '9:00 AM',
+      practitioner: 'Dr. Luis R',
+      clinic: 'Nottingham Clinic',
+      status: 'completed',
+      type: 'Initial evaluation',
+      notes: 'Initial intake completed. Evaluated base shoulder ROM at 85 degrees. Routine rules established.'
+    },
+    {
+      id: 6,
+      date: '2026-06-10', // Past
+      time: '11:00 AM',
+      practitioner: 'Dr. Luis R',
+      clinic: 'Chelsea Clinic',
+      status: 'cancelled',
+      type: 'Follow-up session',
+      notes: 'Rescheduled due to practitioner travel.'
+    },
+    {
+      id: 7,
+      date: '2026-06-03', // Past
+      time: '3:00 PM',
+      practitioner: 'Dr. Luis R',
+      clinic: 'Chelsea Clinic',
+      status: 'missed',
+      type: 'Video check-in',
+      notes: 'Patient did not attend check-in call.'
+    }
+  ]);
+
+  const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
+  const [isReschedulingApptId, setIsReschedulingApptId] = useState<number | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<string>('');
+  const [rescheduleTime, setRescheduleTime] = useState<string>('');
+  const [showRescheduleSuccess, setShowRescheduleSuccess] = useState<boolean>(false);
+
+  // Initialize selected appointment focus on mount
+  useEffect(() => {
+    const todayAppt = appointmentsList.find(a => a.date === '2026-06-25' && a.status === 'upcoming');
+    setSelectedAppointment(todayAppt || appointmentsList[0] || null);
+  }, []);
 
   useEffect(() => {
     async function loadPatientData() {
@@ -766,6 +860,782 @@ const PatientDashboard: React.FC = () => {
       )}
     </div>
   );
+
+
+  // ==========================================
+  // Patient Appointments Redesign Helpers & Layouts
+  // ==========================================
+  const getStatusBadge = (status: string) => {
+    const configs: Record<string, { label: string; className: string }> = {
+      upcoming: { label: 'Upcoming', className: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' },
+      completed: { label: 'Completed', className: 'bg-green-500/10 text-green-400 border-green-500/20' },
+      cancelled: { label: 'Cancelled', className: 'bg-slate-500/10 text-slate-400 border-slate-500/20' },
+      rescheduled: { label: 'Rescheduled', className: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+      missed: { label: 'Missed', className: 'bg-red-500/10 text-red-400 border-red-500/20' },
+    };
+    const config = configs[status] || { label: status, className: 'bg-slate-500/10 text-slate-400' };
+    return (
+      <span className={cn("text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border shadow-2xs select-none", config.className)}>
+        {config.label}
+      </span>
+    );
+  };
+
+  const formatApptDate = (dateStr: string) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+  };
+
+  const handleMockRescheduleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rescheduleDate || !rescheduleTime || isReschedulingApptId === null) return;
+    
+    setAppointmentsList(prev => prev.map(a => {
+      if (a.id === isReschedulingApptId) {
+        return {
+          ...a,
+          date: rescheduleDate,
+          time: rescheduleTime,
+          status: 'rescheduled',
+          notes: `Rescheduled to ${rescheduleDate} at ${rescheduleTime}. ${a.notes || ''}`
+        };
+      }
+      return a;
+    }));
+    
+    setSelectedAppointment((prev: any) => {
+      if (prev && prev.id === isReschedulingApptId) {
+        return {
+          ...prev,
+          date: rescheduleDate,
+          time: rescheduleTime,
+          status: 'rescheduled',
+          notes: `Rescheduled to ${rescheduleDate} at ${rescheduleTime}. ${prev.notes || ''}`
+        };
+      }
+      return prev;
+    });
+
+    setShowRescheduleSuccess(true);
+    setTimeout(() => {
+      setShowRescheduleSuccess(false);
+      setIsReschedulingApptId(null);
+      setRescheduleDate('');
+      setRescheduleTime('');
+    }, 1500);
+  };
+
+  const renderRescheduleModal = () => {
+    if (isReschedulingApptId === null) return null;
+    const appt = appointmentsList.find(a => a.id === isReschedulingApptId);
+    if (!appt) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in select-none">
+        <div className="bg-white dark:bg-[#121122] border border-[#E5E5E5] dark:border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-6 text-left shadow-2xl">
+          <div className="flex justify-between items-center border-b border-[#E5E5E5] dark:border-charcoal-800 pb-3">
+            <h3 className="font-display font-bold text-sm text-[#0D0C18] dark:text-white flex items-center gap-2">
+              <CalendarPlus className="h-4.5 w-4.5 text-[#A27B41]" />
+              Reschedule Session
+            </h3>
+            <button 
+              onClick={() => setIsReschedulingApptId(null)}
+              className="p-1 hover:bg-[#F5F5F5] dark:hover:bg-slate-800 rounded-lg text-chosen-text-muted transition-all"
+            >
+              <XCircle className="h-5 w-5" />
+            </button>
+          </div>
+
+          {showRescheduleSuccess ? (
+            <div className="py-6 flex flex-col items-center justify-center text-center space-y-2.5">
+              <CheckCircle2 className="h-10 w-10 text-emerald-400 animate-pulse" />
+              <span className="text-xs font-bold text-[#0D0C18] dark:text-white">Date Changed Successfully!</span>
+              <span className="text-[10px] text-chosen-text-muted">Resynced with care coordinator.</span>
+            </div>
+          ) : (
+            <form onSubmit={handleMockRescheduleSubmit} className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-chosen-text-muted uppercase tracking-wider block mb-1.5">Select New Date</span>
+                <input 
+                  type="date"
+                  required
+                  value={rescheduleDate}
+                  min="2026-06-25"
+                  onChange={e => setRescheduleDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#F5F5F5] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-md text-chosen-text-primary text-xs focus:ring-1 focus:ring-gold-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-chosen-text-muted uppercase tracking-wider block mb-1.5">Select Time Slot</span>
+                <select
+                  required
+                  value={rescheduleTime}
+                  onChange={e => setRescheduleTime(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#F5F5F5] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-md text-chosen-text-primary text-xs focus:ring-1 focus:ring-gold-500 focus:outline-none"
+                >
+                  <option value="">Choose time...</option>
+                  <option value="9:00 AM">9:00 AM</option>
+                  <option value="10:30 AM">10:30 AM</option>
+                  <option value="12:00 PM">12:00 PM</option>
+                  <option value="2:00 PM">2:00 PM</option>
+                  <option value="3:30 PM">3:30 PM</option>
+                  <option value="5:00 PM">5:00 PM</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1 text-2xs py-2 border-none"
+                  onClick={() => setIsReschedulingApptId(null)}
+                  type="button"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  className="flex-1 text-2xs py-2 btn-accent"
+                  type="submit"
+                >
+                  Confirm Change
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderAppointmentsMobile = () => {
+    const upcoming = appointmentsList.filter(a => a.status === 'upcoming' || a.status === 'rescheduled');
+    const past = appointmentsList.filter(a => a.status === 'completed' || a.status === 'cancelled' || a.status === 'missed');
+
+    return (
+      <div className="space-y-6 text-left animate-slide-up pb-10">
+        {/* Mobile Header Block */}
+        <div className="flex justify-between items-center pb-4 border-b border-[#E5E5E5] dark:border-charcoal-800">
+          <h1 className="text-xl font-display font-bold text-[#0D0C18] dark:text-white">Appointments</h1>
+          <button 
+            onClick={() => setMobileTab('profile')}
+            className="p-2 hover:bg-[#F5F5F5] dark:hover:bg-charcoal-800 rounded-chosen-md text-chosen-text-secondary border border-[#E5E5E5] dark:border-charcoal-800"
+            title="Profile Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Upcoming appointments list */}
+        <div className="space-y-3.5">
+          <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Upcoming Sessions</h3>
+          {upcoming.length === 0 ? (
+            <div className="p-6 bg-white dark:bg-charcoal-850 border border-chosen rounded-chosen-xl text-center text-xs text-chosen-text-muted">
+              No upcoming appointments scheduled.
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              {upcoming.map(appt => (
+                <div key={appt.id} className="p-4 bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl shadow-chosen-sm space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <span className="font-display font-bold text-sm text-[#0D0C18] dark:text-white block">
+                        {formatApptDate(appt.date)}
+                      </span>
+                      <span className="text-2xs text-[#A27B41] font-bold block flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> {appt.time}
+                      </span>
+                    </div>
+                    {getStatusBadge(appt.status)}
+                  </div>
+
+                  <div className="border-t border-[#E5E5E5] dark:border-charcoal-800/80 my-2" />
+
+                  <div className="space-y-1.5 text-xs text-chosen-text-secondary">
+                    <span className="block font-bold text-[#0D0C18] dark:text-white">{appt.practitioner}</span>
+                    <span className="block">{appt.type} · {appt.clinic}</span>
+                  </div>
+
+                  <div className="flex gap-2.5 pt-1 select-none">
+                    <Button
+                      variant="outline"
+                      className="flex-1 text-2xs py-1.5 h-8 font-semibold"
+                      onClick={() => setSelectedAppointment(appt)}
+                    >
+                      Details
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="flex-1 text-2xs py-1.5 h-8 font-semibold"
+                      onClick={() => {
+                        setIsReschedulingApptId(appt.id);
+                        setRescheduleDate(appt.date);
+                        setRescheduleTime(appt.time);
+                      }}
+                    >
+                      Reschedule
+                    </Button>
+                    {appt.joinUrl && (
+                      <Button
+                        variant="primary"
+                        className="flex-1 text-2xs py-1.5 btn-accent h-8 font-semibold"
+                        onClick={() => window.open(appt.joinUrl, '_blank')}
+                        leftIcon={<Video className="h-3.5 w-3.5" />}
+                      >
+                        Join
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Past history log */}
+        <div className="space-y-3">
+          <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Past History Log</h3>
+          {past.length === 0 ? (
+            <div className="p-6 bg-white dark:bg-charcoal-850 border border-chosen rounded-chosen-xl text-center text-xs text-chosen-text-muted">
+              No historical appointment records.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {past.map(appt => (
+                <div 
+                  key={appt.id} 
+                  onClick={() => setSelectedAppointment(appt)}
+                  className={cn(
+                    "p-3.5 bg-[#FAFBFC] dark:bg-charcoal-900 border rounded-chosen-xl flex justify-between items-center transition-all cursor-pointer hover:border-gold-500/30",
+                    selectedAppointment?.id === appt.id ? "border-gold-500/50 shadow-chosen-sm bg-amber-50/5 dark:bg-amber-950/5" : "border-[#F5F5F5] dark:border-charcoal-800/60"
+                  )}
+                >
+                  <div className="space-y-1 text-left min-w-0">
+                    <span className="font-bold text-xs text-[#0D0C18] dark:text-white block truncate font-display">
+                      {formatApptDate(appt.date)} · {appt.time}
+                    </span>
+                    <span className="text-[10px] text-chosen-text-muted block font-medium truncate mt-0.5">
+                      {appt.practitioner} · {appt.type}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    {getStatusBadge(appt.status)}
+                    <ChevronRight className="h-4.5 w-4.5 text-chosen-text-muted" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Selected Appointment details bottom drawer/modal */}
+        {selectedAppointment && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-4 z-40 animate-fade-in select-none">
+            <div className="bg-white dark:bg-[#121122] border border-[#E5E5E5] dark:border-slate-800 rounded-t-3xl sm:rounded-3xl p-6 max-w-md w-full space-y-5 text-left shadow-2xl animate-slide-up max-h-[85vh] overflow-y-auto">
+              <div className="flex justify-between items-center border-b border-[#E5E5E5] dark:border-slate-800 pb-3.5">
+                <div>
+                  <h4 className="font-display font-bold text-base text-[#0D0C18] dark:text-white">Appointment Details</h4>
+                  <span className="text-[10px] text-chosen-text-muted uppercase tracking-wider block mt-0.5">{selectedAppointment.type}</span>
+                </div>
+                <button 
+                  onClick={() => setSelectedAppointment(null)}
+                  className="p-1 hover:bg-[#F5F5F5] dark:hover:bg-slate-800 rounded-lg text-chosen-text-secondary transition-all"
+                >
+                  <XCircle className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="p-3.5 bg-[#FAFBFC] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800/80 rounded-chosen-xl space-y-1">
+                  <span className="text-[9px] text-chosen-text-muted uppercase font-bold tracking-wider block">Scheduled time</span>
+                  <span className="font-bold text-[#0D0C18] dark:text-white block text-sm font-display">
+                    {formatApptDate(selectedAppointment.date)} at {selectedAppointment.time}
+                  </span>
+                </div>
+
+                <div className="flex gap-3.5 items-center">
+                  <div className="h-10 w-10 bg-indigo-500/10 text-indigo-500 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border border-indigo-500/10">
+                    {selectedAppointment.practitioner.split(' ').pop()?.[0] || 'PT'}
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs text-[#0D0C18] dark:text-white block">{selectedAppointment.practitioner}</span>
+                    <span className="text-[10px] text-chosen-text-muted block font-medium">Rehabilitation Physical Therapist</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-start text-left">
+                  <MapPin className="h-4.5 w-4.5 text-[#A27B41] shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-xs text-[#0D0C18] dark:text-white block">Location Site</span>
+                    <span className="text-[10px] text-chosen-text-secondary block mt-0.5">{selectedAppointment.clinic}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  <Info className="h-4.5 w-4.5 text-chosen-text-muted shrink-0" />
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-chosen-text-secondary">Appt Status:</span>
+                    {getStatusBadge(selectedAppointment.status)}
+                  </div>
+                </div>
+
+                {selectedAppointment.notes && (
+                  <div className="p-3.5 bg-slate-500/5 border border-chosen rounded-chosen-xl space-y-1.5 text-left">
+                    <span className="text-[9px] text-chosen-text-muted uppercase font-bold tracking-wider block flex items-center gap-1.5">
+                      <MessageSquare className="h-3 w-3" /> Clinical progress notes
+                    </span>
+                    <p className="text-chosen-text-secondary leading-relaxed text-2xs italic font-medium">
+                      "{selectedAppointment.notes}"
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 select-none">
+                <Button
+                  variant="primary"
+                  className="w-full font-bold py-3 text-xs btn-primary shadow-sm"
+                  onClick={() => setSelectedAppointment(null)}
+                >
+                  Dismiss Details
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderAppointmentsTablet = () => {
+    const upcoming = appointmentsList.filter(a => a.status === 'upcoming' || a.status === 'rescheduled');
+    const past = appointmentsList.filter(a => a.status === 'completed' || a.status === 'cancelled' || a.status === 'missed');
+    const focused = selectedAppointment || upcoming[0] || past[0] || null;
+
+    return (
+      <div className="space-y-6 text-left animate-fade-in">
+        {/* Tablet Header */}
+        <div className="flex justify-between items-center pb-4 border-b border-[#E5E5E5] dark:border-charcoal-800 mb-2">
+          <div className="space-y-1">
+            <h1 className="text-xl font-display font-bold text-[#0D0C18] dark:text-white">Appointments & History</h1>
+            <p className="text-xs text-chosen-text-muted">Manage clinical calls and rehabilitation check-ins.</p>
+          </div>
+          <button 
+            onClick={() => setMobileTab('profile')}
+            className="p-2 hover:bg-[#F5F5F5] dark:hover:bg-charcoal-800 rounded-chosen-md text-chosen-text-secondary border border-[#E5E5E5] dark:border-charcoal-800 shadow-chosen-sm transition-all"
+            title="Profile Settings"
+          >
+            <Settings className="h-4.5 w-4.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 items-start">
+          {/* Column 1 - Upcoming and Quick Actions */}
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-lg p-5 space-y-4 shadow-chosen-sm">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Upcoming Sessions</h3>
+              <div className="space-y-3">
+                {upcoming.map(appt => (
+                  <div 
+                    key={appt.id} 
+                    onClick={() => setSelectedAppointment(appt)}
+                    className={cn(
+                      "p-3.5 bg-[#FAFBFC] dark:bg-charcoal-900 border rounded-chosen-xl flex justify-between items-center transition-all cursor-pointer hover:border-gold-500/30",
+                      focused?.id === appt.id ? "border-gold-500/50 shadow-chosen-sm bg-amber-50/5 dark:bg-amber-950/5" : "border-[#E5E5E5] dark:border-charcoal-800/60"
+                    )}
+                  >
+                    <div className="space-y-1">
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block font-display">
+                        {formatApptDate(appt.date)} at {appt.time}
+                      </span>
+                      <span className="text-[10px] text-chosen-text-muted block mt-0.5">
+                        {appt.practitioner} · {appt.type}
+                      </span>
+                    </div>
+                    {getStatusBadge(appt.status)}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-chosen rounded-chosen-lg p-5 space-y-4 shadow-chosen-sm">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Quick Actions</h3>
+              <div className="grid grid-cols-1 gap-2.5 text-xs select-none">
+                <Button
+                  variant="outline"
+                  className="w-full text-2xs py-2 bg-slate-500/5 hover:bg-slate-500/10 text-chosen-text-secondary hover:text-chosen-text-primary border-chosen flex items-center justify-start gap-2 h-9 font-semibold"
+                  onClick={() => alert('Care coordination message portal opening...')}
+                  leftIcon={<MessageSquare className="h-4 w-4 text-[#A27B41]" />}
+                >
+                  Message Care Team
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full text-2xs py-2 bg-slate-500/5 hover:bg-slate-500/10 text-chosen-text-secondary hover:text-chosen-text-primary border-chosen flex items-center justify-start gap-2 h-9 font-semibold"
+                  onClick={() => alert('Schedule exported. Saved calendar file.')}
+                  leftIcon={<CalendarPlus className="h-4 w-4 text-[#A27B41]" />}
+                >
+                  Export to Calendar
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Column 2 - Details focus & Past */}
+          <div className="space-y-6">
+            {focused && (
+              <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-lg p-5 space-y-4 shadow-chosen-sm text-left">
+                <div className="flex justify-between items-start border-b border-[#F5F5F5] dark:border-charcoal-800/80 pb-3">
+                  <div>
+                    <h3 className="font-display font-bold text-sm text-[#0D0C18] dark:text-white">Focused details</h3>
+                    <span className="text-[10px] text-chosen-text-muted uppercase tracking-wider font-semibold block mt-0.5">{focused.type}</span>
+                  </div>
+                  {getStatusBadge(focused.status)}
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <div className="flex gap-3.5 items-center">
+                    <div className="h-10 w-10 bg-indigo-500/10 text-indigo-500 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border border-indigo-500/10">
+                      {focused.practitioner.split(' ').pop()?.[0] || 'PT'}
+                    </div>
+                    <div className="text-left">
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block">{focused.practitioner}</span>
+                      <span className="text-[10px] text-chosen-text-muted block">Supervising Physical Therapist</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="p-3 bg-[#FAFBFC] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800/80 rounded-chosen-md text-left">
+                      <span className="text-[9px] text-chosen-text-muted uppercase font-bold block">Appointment date</span>
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block mt-1 font-display">{formatApptDate(focused.date)}</span>
+                    </div>
+                    <div className="p-3 bg-[#FAFBFC] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800/80 rounded-chosen-md text-left">
+                      <span className="text-[9px] text-chosen-text-muted uppercase font-bold block">Scheduled time</span>
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block mt-1 font-display">{focused.time}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 text-left">
+                    <MapPin className="h-4.5 w-4.5 text-[#A27B41] shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block">Site location</span>
+                      <span className="text-[10px] text-chosen-text-secondary block mt-0.5">{focused.clinic}</span>
+                    </div>
+                  </div>
+
+                  {focused.notes && (
+                    <div className="p-3 bg-slate-500/5 border border-chosen rounded-chosen-md text-left space-y-1.5">
+                      <span className="text-[9px] text-chosen-text-muted uppercase font-bold block">Clinical progress notes</span>
+                      <p className="text-[10px] text-chosen-text-secondary leading-relaxed italic">
+                        "{focused.notes}"
+                      </p>
+                    </div>
+                  )}
+
+                  {focused.status === 'upcoming' && (
+                    <div className="flex gap-3 pt-2 select-none">
+                      <Button
+                        variant="secondary"
+                        className="flex-1 text-2xs py-2 bg-[#F5F5F5] hover:bg-[#E6E6E6] text-slate-800 border-none font-semibold"
+                        onClick={() => {
+                          setIsReschedulingApptId(focused.id);
+                          setRescheduleDate(focused.date);
+                          setRescheduleTime(focused.time);
+                        }}
+                      >
+                        Reschedule
+                      </Button>
+                      {focused.joinUrl && (
+                        <Button
+                          variant="primary"
+                          className="flex-1 text-2xs py-2 btn-accent font-semibold"
+                          onClick={() => window.open(focused.joinUrl, '_blank')}
+                          leftIcon={<Video className="h-3 w-3" />}
+                        >
+                          Join Meeting
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Past history */}
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-lg p-5 space-y-4 shadow-chosen-sm">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Past History Log</h3>
+              <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                {past.map(appt => (
+                  <div 
+                    key={appt.id} 
+                    onClick={() => setSelectedAppointment(appt)}
+                    className={cn(
+                      "p-3 bg-[#FAFBFC] dark:bg-charcoal-900 border rounded-chosen-xl flex justify-between items-center transition-all cursor-pointer hover:border-gold-500/30",
+                      focused?.id === appt.id ? "border-gold-500/50 shadow-chosen-sm bg-amber-50/5 dark:bg-amber-950/5" : "border-[#F5F5F5] dark:border-charcoal-800/60"
+                    )}
+                  >
+                    <div className="space-y-0.5 text-left">
+                      <span className="font-bold text-2xs text-[#0D0C18] dark:text-white block font-display">
+                        {formatApptDate(appt.date)} · {appt.time}
+                      </span>
+                      <span className="text-[10px] text-chosen-text-muted block">
+                        {appt.practitioner} · {appt.type}
+                      </span>
+                    </div>
+                    {getStatusBadge(appt.status)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAppointmentsDesktop = () => {
+    const upcoming = appointmentsList.filter(a => a.status === 'upcoming' || a.status === 'rescheduled');
+    const past = appointmentsList.filter(a => a.status === 'completed' || a.status === 'cancelled' || a.status === 'missed');
+    const focused = selectedAppointment || upcoming[0] || past[0] || null;
+    const todayAppt = appointmentsList.find(a => a.date === '2026-06-25' && a.status === 'upcoming');
+
+    return (
+      <div className="space-y-6 text-left animate-fade-in max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Desktop Header */}
+        <div className="flex justify-between items-center border-b border-[#E5E5E5] dark:border-charcoal-800 pb-4 mb-4">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-display font-bold text-[#0D0C18] dark:text-white">Appointments & History</h1>
+            <p className="text-xs text-chosen-text-muted">Review, reschedule, or join virtual care consultations with your clinical team.</p>
+          </div>
+          <button 
+            onClick={() => setMobileTab('profile')}
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-[#F5F5F5] dark:hover:bg-charcoal-800 rounded-chosen-md text-chosen-text-secondary border border-[#E5E5E5] dark:border-charcoal-800 text-xs font-semibold shadow-chosen-sm transition-all active:scale-95"
+            title="Profile settings"
+          >
+            <Settings className="h-4 w-4 text-[#A27B41]" /> Settings Dashboard
+          </button>
+        </div>
+
+        <div className="grid grid-cols-12 gap-8 items-start">
+          {/* Left Column (col-span-4) - Spotlight & Upcoming */}
+          <div className="col-span-12 lg:col-span-4 space-y-6">
+            {todayAppt && (
+              <div className="bg-ai-gradient dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800/80 rounded-chosen-xl p-5 shadow-chosen-lg relative overflow-hidden text-left w-full transition-all duration-300 hover:shadow-chosen-xl">
+                <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-white/10 dark:bg-white/5 rounded-full blur-2xl pointer-events-none" />
+                <div className="relative z-10 space-y-3.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#525252] dark:text-slate-400">Today's Appointment</span>
+                    <span className="text-[9px] bg-white/80 dark:bg-charcoal-800/80 border border-[#E5E5E5] dark:border-charcoal-700/50 px-2.5 py-0.5 rounded-full font-bold text-[#A27B41] shadow-sm select-none">
+                      Active check-in
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-sm text-[#0D0C18] dark:text-white leading-tight">
+                      Thursday, 25 Jun · {todayAppt.time}
+                    </h3>
+                  </div>
+                  <div className="border-t border-[#E5E5E5] dark:border-charcoal-800/60 my-2" />
+                  <div className="space-y-1 text-2xs text-[#525252] dark:text-slate-400 font-medium">
+                    <span className="block font-bold text-[#0D0C18] dark:text-white">{todayAppt.practitioner}</span>
+                    <span className="block">{todayAppt.type} · {todayAppt.clinic}</span>
+                  </div>
+                  <div className="flex gap-2.5 pt-1 select-none">
+                    <Button
+                      variant="outline"
+                      className="flex-1 text-2xs py-1.5 bg-white/80 dark:bg-charcoal-800/80 border border-[#E5E5E5] dark:border-charcoal-700 text-[#0D0C18] dark:text-white font-bold"
+                      onClick={() => setSelectedAppointment(todayAppt)}
+                    >
+                      View Details
+                    </Button>
+                    {todayAppt.joinUrl && (
+                      <Button
+                        variant="primary"
+                        className="flex-1 text-2xs py-1.5 btn-accent"
+                        onClick={() => window.open(todayAppt.joinUrl, '_blank')}
+                        leftIcon={<Video className="h-3 w-3" />}
+                      >
+                        Join Call
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl p-5 space-y-4 shadow-chosen-sm">
+              <div className="flex items-center justify-between pb-1">
+                <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Upcoming Sessions</h3>
+                <span className="text-[10px] bg-slate-100 dark:bg-charcoal-900 border border-chosen px-2.5 py-0.5 rounded-full font-bold text-slate-500">{upcoming.length} scheduled</span>
+              </div>
+              <div className="space-y-3">
+                {upcoming.map(appt => (
+                  <div 
+                    key={appt.id} 
+                    onClick={() => setSelectedAppointment(appt)}
+                    className={cn(
+                      "p-4 bg-[#FAFBFC] dark:bg-charcoal-900 border rounded-chosen-xl flex justify-between items-center transition-all cursor-pointer hover:border-gold-500/30 hover:shadow-chosen-sm hover:translate-y-[-1px]",
+                      focused?.id === appt.id ? "border-gold-500/50 shadow-chosen-sm bg-amber-50/5 dark:bg-amber-950/5" : "border-[#E5E5E5] dark:border-charcoal-800/60"
+                    )}
+                  >
+                    <div className="space-y-1.5 text-left min-w-0">
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block font-display">
+                        {formatApptDate(appt.date)}
+                      </span>
+                      <span className="text-2xs text-[#A27B41] font-bold block flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5 text-chosen-text-muted" /> {appt.time}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      {getStatusBadge(appt.status)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Center Column (col-span-5) - Focus Details Panel */}
+          <div className="col-span-12 lg:col-span-5">
+            {focused ? (
+              <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl p-6 space-y-5 shadow-chosen-sm text-left">
+                <div className="flex justify-between items-start border-b border-[#F5F5F5] dark:border-charcoal-800/80 pb-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-[#A27B41] uppercase tracking-widest font-bold block">Appointment Focus</span>
+                    <h3 className="font-display font-bold text-base text-[#0D0C18] dark:text-white">{focused.type}</h3>
+                  </div>
+                  {getStatusBadge(focused.status)}
+                </div>
+
+                <div className="space-y-5 text-xs text-left">
+                  <div className="flex gap-4 items-center bg-[#FAFBFC] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800/80 p-4 rounded-chosen-xl">
+                    <div className="h-11 w-11 bg-indigo-500/10 text-indigo-500 rounded-full flex items-center justify-center font-bold text-base shrink-0 border border-indigo-500/10">
+                      {focused.practitioner.split(' ').pop()?.[0] || 'PT'}
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block">{focused.practitioner}</span>
+                      <span className="text-2xs text-chosen-text-muted block mt-0.5 font-medium">Primary Rehabilitation Physical Therapist</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-[#FAFBFC] dark:bg-charcoal-900 border border-chosen rounded-chosen-xl text-left">
+                      <span className="text-[9px] text-chosen-text-muted uppercase font-bold block">Scheduled date</span>
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block mt-1.5 font-display">{formatApptDate(focused.date)}</span>
+                    </div>
+                    <div className="p-4 bg-[#FAFBFC] dark:bg-charcoal-900 border border-chosen rounded-chosen-xl text-left">
+                      <span className="text-[9px] text-chosen-text-muted uppercase font-bold block">Scheduled time</span>
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block mt-1.5 font-display">{focused.time}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 bg-[#FAFBFC] dark:bg-charcoal-900 border border-chosen p-4 rounded-chosen-xl text-left">
+                    <MapPin className="h-5 w-5 text-[#A27B41] shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-xs text-[#0D0C18] dark:text-white block">Clinic Location</span>
+                      <span className="text-[10px] text-chosen-text-secondary block mt-0.5">{focused.clinic}</span>
+                      <span className="text-[8px] text-chosen-text-muted block mt-1 leading-normal font-mono font-medium">Verified practitioner credentials on site</span>
+                    </div>
+                  </div>
+
+                  {focused.notes && (
+                    <div className="p-4 bg-slate-500/5 border border-chosen rounded-chosen-xl space-y-2.5">
+                      <span className="text-[9px] text-chosen-text-muted uppercase font-bold tracking-wider block flex items-center gap-1.5">
+                        <MessageSquare className="h-3.5 w-3.5" /> Clinical consultation notes
+                      </span>
+                      <p className="text-chosen-text-secondary leading-relaxed italic text-2xs font-semibold">
+                        "{focused.notes}"
+                      </p>
+                    </div>
+                  )}
+
+                  {focused.status === 'upcoming' && (
+                    <div className="flex gap-3 pt-2 select-none">
+                      <Button
+                        variant="secondary"
+                        className="flex-1 text-2xs py-2.5 bg-[#F5F5F5] hover:bg-[#E6E6E6] text-slate-800 border-none font-semibold"
+                        onClick={() => {
+                          setIsReschedulingApptId(focused.id);
+                          setRescheduleDate(focused.date);
+                          setRescheduleTime(focused.time);
+                        }}
+                      >
+                        Reschedule Session
+                      </Button>
+                      {focused.joinUrl && (
+                        <Button
+                          variant="primary"
+                          className="flex-1 text-2xs py-2.5 btn-accent font-semibold"
+                          onClick={() => window.open(focused.joinUrl, '_blank')}
+                          leftIcon={<Video className="h-3.5 w-3.5" />}
+                        >
+                          Join Zoom Meeting
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-charcoal-850 border border-chosen rounded-chosen-xl p-12 text-center text-xs text-chosen-text-muted">
+                No active focused appointment records. Select a card to load.
+              </div>
+            )}
+          </div>
+
+          {/* Right Column (col-span-3) - Past logs & Actions */}
+          <div className="col-span-12 lg:col-span-3 space-y-6">
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl p-5 space-y-4 shadow-chosen-sm">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Past History Log</h3>
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                {past.map(appt => (
+                  <div 
+                    key={appt.id} 
+                    onClick={() => setSelectedAppointment(appt)}
+                    className={cn(
+                      "p-3 bg-[#FAFBFC] dark:bg-charcoal-900 border rounded-chosen-xl flex justify-between items-center transition-all cursor-pointer hover:border-gold-500/30 hover:shadow-chosen-sm hover:translate-y-[-1px]",
+                      focused?.id === appt.id ? "border-gold-500/50 shadow-chosen-sm bg-amber-50/5 dark:bg-amber-950/5" : "border-[#F5F5F5] dark:border-charcoal-800/60"
+                    )}
+                  >
+                    <div className="space-y-0.5 text-left min-w-0">
+                      <span className="font-bold text-2xs text-[#0D0C18] dark:text-white block truncate font-display">
+                        {formatApptDate(appt.date)}
+                      </span>
+                      <span className="text-[10px] text-chosen-text-muted block truncate font-medium mt-0.5">
+                        {appt.practitioner} · {appt.type}
+                      </span>
+                    </div>
+                    {getStatusBadge(appt.status)}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-chosen rounded-chosen-xl p-5 space-y-4 shadow-chosen-sm">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted font-semibold text-left">Quick Actions</h3>
+              <div className="flex flex-col gap-2.5 text-xs select-none">
+                <Button
+                  variant="outline"
+                  className="w-full text-2xs py-2.5 bg-slate-500/5 hover:bg-slate-500/10 text-chosen-text-secondary hover:text-chosen-text-primary border-chosen flex items-center justify-start gap-2 h-10 font-semibold"
+                  onClick={() => alert('Secure message portal loaded. Dr. Luis R notified.')}
+                  leftIcon={<MessageSquare className="h-4 w-4 text-[#A27B41]" />}
+                >
+                  Contact Clinician
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full text-2xs py-2.5 bg-slate-500/5 hover:bg-slate-500/10 text-chosen-text-secondary hover:text-chosen-text-primary border-chosen flex items-center justify-start gap-2 h-10 font-semibold"
+                  onClick={() => alert('Downloaded rehabilitation calendar schedule file (.ics)')}
+                  leftIcon={<CalendarPlus className="h-4 w-4 text-[#A27B41]" />}
+                >
+                  Download Schedule
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const calendarRow = (
     <div className="flex items-center gap-1.5 w-full overflow-x-auto py-2 select-none select-none scrollbar-none animate-fade-in">
@@ -1774,9 +2644,9 @@ const PatientDashboard: React.FC = () => {
         <Target className="h-4.5 w-4.5" />
         <span className="text-[9px] font-bold uppercase tracking-wider">Move</span>
       </button>
-      <button onClick={() => setMobileTab('profile')} className={cn("flex flex-col items-center gap-1.5 flex-1 py-1 transition-all active:scale-90", mobileTab === 'profile' ? "text-[#A27B41]" : "text-[#A3A3A3]")}>
-        <User className="h-4.5 w-4.5" />
-        <span className="text-[9px] font-bold uppercase tracking-wider">Profile</span>
+      <button onClick={() => setMobileTab('appointments')} className={cn("flex flex-col items-center gap-1.5 flex-1 py-1 transition-all active:scale-90", mobileTab === 'appointments' ? "text-[#A27B41]" : "text-[#A3A3A3]")}>
+        <Calendar className="h-4.5 w-4.5" />
+        <span className="text-[9px] font-bold uppercase tracking-wider">Appointments</span>
       </button>
     </div>
   );
@@ -1796,6 +2666,7 @@ const PatientDashboard: React.FC = () => {
             <button onClick={() => setMobileTab('overview')} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'overview' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>Home</button>
             <button onClick={() => { setMobileTab('exercises'); setSelectedAssignment(null); }} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'exercises' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>My Plan</button>
             <button onClick={() => setMobileTab('progress')} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'progress' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>Move</button>
+            <button onClick={() => setMobileTab('appointments')} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'appointments' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>Appointments</button>
             <button onClick={() => setMobileTab('profile')} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'profile' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>Profile</button>
           </div>
         </Header>
@@ -1933,6 +2804,7 @@ const PatientDashboard: React.FC = () => {
             </div>
           )}
 
+          {mobileTab === 'appointments' && renderAppointmentsDesktop()}
           {mobileTab === 'profile' && <div className="max-w-2xl mx-auto">{mobileProfileTab}</div>}
         </div>
 
@@ -1994,6 +2866,7 @@ const PatientDashboard: React.FC = () => {
               </div>
             </div>
           )}
+          {mobileTab === 'appointments' && renderAppointmentsTablet()}
           {mobileTab === 'profile' && <div className="max-w-2xl mx-auto">{mobileProfileTab}</div>}
         </div>
 
@@ -2022,9 +2895,11 @@ const PatientDashboard: React.FC = () => {
               {practiceLogsHistory}
             </div>
           )}
+          {mobileTab === 'appointments' && renderAppointmentsMobile()}
           {mobileTab === 'profile' && mobileProfileTab}
         </div>
       </ContentWrapper>
+      {renderRescheduleModal()}
     </PageContainer>
   );
 };
