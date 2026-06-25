@@ -24,7 +24,11 @@ import {
   Settings,
   Bell,
   Info,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatisticCard } from '@/components/ui/Card';
@@ -121,6 +125,10 @@ const PatientDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [mobileTab, setMobileTab] = useState<'overview' | 'exercises' | 'progress' | 'profile'>('overview');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedAssignment, setSelectedAssignment] = useState<ExerciseAssignment | null>(null);
+  const [tipsOpen, setTipsOpen] = useState(true);
+  const [mistakesOpen, setMistakesOpen] = useState(false);
+  const [musclesOpen, setMusclesOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -240,6 +248,122 @@ const PatientDashboard: React.FC = () => {
       duration: '5 mins',
       bodyPart: 'Lower Body',
       category: 'Rehabilitation'
+    };
+  };
+
+  const getExerciseGuideDetails = (name: string) => {
+    const lowercaseName = name.toLowerCase();
+    if (lowercaseName.includes('hinge')) {
+      return {
+        description: "The bodyweight hip hinge is a fundamental rehabilitation movement designed to strengthen the posterior chain (glutes, hamstrings, and lower back) while teaching proper movement mechanics for lifting. It focuses on movement at the hip joint rather than bending the knees, promoting lumbo-pelvic stability.",
+        instructions: [
+          "Stand with your feet hip-width apart, knees slightly unlocked (soft knees), and arms relaxed at your sides or resting on your hips.",
+          "Engage your core and maintain a neutral spine as you pull your shoulders back and down.",
+          "Begin the movement by pushing your hips straight back as if trying to touch a wall behind you with your glutes.",
+          "Lower your torso toward the floor, keeping your back completely flat and shins vertical. Feel the stretch in your hamstrings.",
+          "Stop lowering once your torso is roughly parallel to the ground or when you feel your hamstrings fully stretched without rounding your back.",
+          "Squeeze your glutes and hamstrings to reverse the motion, driving your hips forward and returning to a tall standing posture."
+        ],
+        preparationTips: [
+          "Keep your weight centered in your heels and mid-foot.",
+          "Use a mirror or keep one hand on your lower back to ensure your spine remains flat.",
+          "Keep your neck aligned; look down at the floor at the bottom of the movement."
+        ],
+        commonMistakes: [
+          "Rounding the spine or lower back, which puts excessive strain on lumbar discs.",
+          "Bending the knees too much, converting the hinge into a standard squat.",
+          "Shifting weight forward onto your toes, which lifts the heels and reduces glute loading."
+        ],
+        safetyNotes: [
+          "Always keep your core active to support your back.",
+          "Do not extend beyond neutral posture at the top of the lift.",
+          "If you feel pinching or strain in the lumbar spine, reduce the range of motion."
+        ],
+        targetMuscles: ["Gluteus Maximus", "Hamstrings", "Erector Spinae", "Core Stabilizers"],
+        requiredEquipment: "None (Bodyweight)"
+      };
+    } else if (lowercaseName.includes('clamshell')) {
+      return {
+        description: "The clamshell exercise is a premier mobility and strength movement targeting the hip abductor group, specifically the gluteus medius. Strengthening this muscle helps stabilize the pelvis, prevents knee valgus (collapsing inwards), and reduces lower body injury risk during weight-bearing activities.",
+        instructions: [
+          "Lie on your side on a comfortable mat. Stack your hips, knees, and ankles cleanly.",
+          "Bend your knees to approximately 90 degrees and pull your thighs forward to a 45-degree angle with your torso.",
+          "Rest your head on your bottom arm and place your top hand on your hip to monitor pelvic rotation.",
+          "Keeping your heels pressed firmly together, slowly raise your top knee as high as possible without rotating your hip or pelvis.",
+          "Pause for 1-2 seconds at the peak of the movement, squeezing your outer glute.",
+          "Slowly lower the knee back to the starting position under full control."
+        ],
+        preparationTips: [
+          "Make sure your hips are stacked directly on top of each other, vertical to the floor.",
+          "Slightly tuck your tailbone and draw in your belly button to stabilize the pelvis.",
+          "Perform each rep slowly to focus on quality muscle activation."
+        ],
+        commonMistakes: [
+          "Rotating the upper hip and torso backward to cheat the range of motion.",
+          "Allowing the heels to separate during knee abduction.",
+          "Using momentum or rapid movements rather than controlled abductor contraction."
+        ],
+        safetyNotes: [
+          "Do not roll your hips back; if you find yourself rolling, reduce the height of the lift.",
+          "Ensure your neck is supported to avoid cervical muscle strain."
+        ],
+        targetMuscles: ["Gluteus Medius", "Tensor Fasciae Latae", "Hip External Rotators"],
+        requiredEquipment: "Resistance Loop Band (optional)"
+      };
+    } else if (lowercaseName.includes('glute') || lowercaseName.includes('bridge')) {
+      return {
+        description: "The glute bridge is a foundational therapeutic exercise that builds strength in the hips, glutes, and hamstrings, while improving core and spine stability. It is highly effective for reducing lower back pain and improving athletic mechanics.",
+        instructions: [
+          "Lie flat on your back on a mat, with knees bent and feet flat on the floor, hip-width apart.",
+          "Place your arms along your sides, palms flat on the floor for stability.",
+          "Contract your core and perform a slight pelvic tilt to press your lower back into the mat.",
+          "Drive through your heels to lift your hips toward the ceiling, creating a straight line from knees to hips and shoulders.",
+          "Squeeze your glutes tightly at the top and hold the bridge posture for 2 seconds.",
+          "Lower your hips slowly back to the starting position on the mat."
+        ],
+        preparationTips: [
+          "Verify that your feet are close enough to your glutes that you can touch your heels with your fingertips.",
+          "Keep your knees aligned with your toes; do not let them bow out or collapse inward.",
+          "Exhale as you raise your hips, and inhale as you lower them."
+        ],
+        commonMistakes: [
+          "Arching the lower back excessively at the top of the bridge instead of extending at the hips.",
+          "Pushing off the toes rather than the heels, which shifts loading to the quadriceps.",
+          "Lifting the hips too fast and hyperextending the spine."
+        ],
+        safetyNotes: [
+          "The lift should come entirely from your glutes and hamstrings, not your lower back.",
+          "If you experience cramping in your hamstrings, move your feet slightly closer to your hips."
+        ],
+        targetMuscles: ["Gluteus Maximus", "Hamstrings", "Rectus Abdominis", "Erector Spinae"],
+        requiredEquipment: "Yoga Mat"
+      };
+    }
+    return {
+      description: "This targeted physical therapy exercise is prescribed to aid your muscle activation, joint mobility, and functional movement patterns. Perform with precision and care under active camera tracking guidance.",
+      instructions: [
+        "Align your body in the starting posture described by your therapist.",
+        "Perform the motion slowly, focusing on muscle control and moving through your complete pain-free range of motion.",
+        "Hold the contraction at the peak for 1-2 seconds.",
+        "Return slowly to the starting position under full control.",
+        "Repeat for the assigned number of sets and repetitions, resting between sets."
+      ],
+      preparationTips: [
+        "Set up in a well-lit space with the camera positioned to capture your full body.",
+        "Warm up with light movements before starting.",
+        "Stay hydrated and concentrate on proper form."
+      ],
+      commonMistakes: [
+        "Moving too fast and utilizing inertia instead of muscle activation.",
+        "Holding your breath during the execution.",
+        "Compromising posture to achieve a larger range of motion."
+      ],
+      safetyNotes: [
+        "Do not push through sharp or sudden pain.",
+        "Maintain controlled stability throughout the exercises."
+      ],
+      targetMuscles: ["Rehabilitation Targeted Muscle Groups"],
+      requiredEquipment: "None (Bodyweight)"
     };
   };
 
@@ -443,7 +567,7 @@ const PatientDashboard: React.FC = () => {
           <ChevronRight className="h-4 w-4 text-chosen-text-muted" />
         </button>
         <button 
-          onClick={() => setMobileTab('exercises')}
+          onClick={() => { setMobileTab('exercises'); setSelectedAssignment(null); }}
           className="w-full flex items-center justify-between px-4 py-3 bg-[#FAFBFC] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800 hover:border-gold-500/30 rounded-chosen-md text-xs font-semibold transition-all hover:translate-x-0.5"
         >
           <span className="flex items-center gap-2">
@@ -939,7 +1063,7 @@ const PatientDashboard: React.FC = () => {
                       <Button
                         variant="secondary"
                         className="flex-1 flex items-center justify-center gap-1.5 font-bold py-2 text-xs hover:bg-gold-500/10 hover:text-[#A27B41] w-full"
-                        onClick={() => alert(`Rehab Instructions:\n${ex.instructions || 'Standard recovery motions'}`)}
+                        onClick={() => setSelectedAssignment(assignment)}
                       >
                         View Details
                       </Button>
@@ -949,6 +1073,574 @@ const PatientDashboard: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderExerciseDetails = () => {
+    if (!selectedAssignment) return null;
+    const assignment = selectedAssignment;
+    const ex = assignment.exercise;
+    if (!ex) return (
+      <div className="text-center py-12">
+        <p className="text-sm font-semibold text-red-500">Exercise profile data is incomplete.</p>
+        <Button variant="secondary" onClick={() => setSelectedAssignment(null)} className="mt-4">
+          Go Back
+        </Button>
+      </div>
+    );
+
+    const meta = getExerciseMetadata(ex.name);
+    const guide = getExerciseGuideDetails(ex.name);
+
+    const sessionsForExercise = sessions.filter(s => 
+      s.exercise_id === ex.id || 
+      (s.title && s.title.toLowerCase().includes(ex.name.toLowerCase()))
+    );
+
+    const exerciseSessionsCount = sessionsForExercise.length;
+    const bestScore = exerciseSessionsCount > 0 
+      ? Math.max(...sessionsForExercise.map(s => Math.round(s.avg_score ?? s.score ?? 0))) 
+      : 0;
+
+    const avgAccuracyForExercise = exerciseSessionsCount > 0 
+      ? Math.round(sessionsForExercise.reduce((acc, s) => acc + (s.avg_score ?? s.score ?? 0), 0) / exerciseSessionsCount) 
+      : 0;
+
+    const radiusDetail = 24;
+    const strokeWidthDetail = 4;
+    const circumferenceDetail = 2 * Math.PI * radiusDetail;
+    const progressPercentDetail = assignment.is_completed ? 100 : 0;
+    const strokeDashoffsetDetail = circumferenceDetail - (progressPercentDetail / 100) * circumferenceDetail;
+
+    return (
+      <div className="space-y-6 lg:space-y-8 animate-fade-in text-left">
+        {/* Desktop Viewport (>1024px) */}
+        <div className="hidden lg:grid grid-cols-12 gap-8 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 lg:py-8 items-start">
+          <div className="col-span-12 space-y-4 border-b border-[#E5E5E5] dark:border-charcoal-800 pb-5">
+            <div className="flex items-center gap-2 text-xs font-semibold select-none text-chosen-text-muted">
+              <button onClick={() => setSelectedAssignment(null)} className="hover:text-[#A27B41] transition-colors border-none bg-transparent">My Plan</button>
+              <ChevronRight className="h-3.5 w-3.5" />
+              <span className="text-chosen-text-primary">Exercises</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+              <span className="text-[#A27B41]">{ex.name}</span>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <div className="space-y-1 text-left">
+                <h1 className="text-2xl font-display font-bold text-[#0D0C18] dark:text-white leading-tight">{ex.name}</h1>
+                <span className="text-xs font-bold text-[#A27B41] uppercase tracking-wider block">{meta.category}</span>
+              </div>
+              <Badge variant={assignment.is_completed ? "success" : "neutral"} styleType="soft">
+                {assignment.is_completed ? "Completed Today" : "Pending Action"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="col-span-4 space-y-6">
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl overflow-hidden shadow-chosen-sm relative">
+              <img
+                src={ex.thumbnail_url || 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=600'}
+                alt={ex.name}
+                className="w-full h-56 object-cover"
+              />
+              <div className="absolute top-3.5 right-3.5">
+                <Badge variant="info" styleType="solid">ROM Target: {ex.target_rom || 120}°</Badge>
+              </div>
+            </div>
+
+            <div className="bg-[#FAFBFC] dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 p-5 rounded-chosen-xl shadow-chosen-sm space-y-4 text-left">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Quick Specifications</h3>
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-chosen-text-muted block font-semibold">Target Area</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.bodyPart}</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-chosen-text-muted block font-semibold">Difficulty</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.difficulty}</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-chosen-text-muted block font-semibold">Repetitions</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.reps} reps / set</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-chosen-text-muted block font-semibold">Sets Count</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.sets} sets</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-chosen-text-muted block font-semibold">Rest Intervals</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.rest}</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-chosen-text-muted block font-semibold">Estimated Time</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.duration}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 p-5 rounded-chosen-xl shadow-chosen-sm space-y-3">
+              <Button
+                variant="primary"
+                className="w-full flex items-center justify-center gap-2 font-bold py-3 text-sm btn-primary"
+                onClick={() => navigate('/tracker', { state: { exerciseName: ex.name, rules: ex.rules } })}
+                leftIcon={<Play className="h-4.5 w-4.5 fill-current" />}
+              >
+                Start Exercise
+              </Button>
+              <Button
+                variant="secondary"
+                className="w-full flex items-center justify-center gap-2 font-bold py-2.5 text-xs hover:bg-[#F5F5F5] dark:hover:bg-charcoal-800"
+                onClick={() => setSelectedAssignment(null)}
+                leftIcon={<ArrowLeft className="h-4 w-4" />}
+              >
+                Return to My Plan
+              </Button>
+            </div>
+          </div>
+
+          <div className="col-span-5 space-y-6">
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 p-5 rounded-chosen-xl shadow-chosen-sm text-left space-y-3">
+              <h3 className="font-display font-bold text-sm text-[#0D0C18] dark:text-white border-b border-[#F5F5F5] dark:border-charcoal-800/80 pb-3">Exercise Description</h3>
+              <p className="text-xs text-chosen-text-secondary leading-relaxed">{guide.description}</p>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted px-1">Exercise Guide & Instructions</h3>
+              
+              <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl overflow-hidden shadow-chosen-sm">
+                <div className="p-5 border-b border-[#F5F5F5] dark:border-charcoal-800/85">
+                  <h4 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-primary">Execution Steps</h4>
+                </div>
+                <ol className="p-5 space-y-3.5 list-decimal list-inside text-xs text-chosen-text-secondary leading-relaxed pl-6">
+                  {guide.instructions.map((step, sIdx) => (
+                    <li key={sIdx} className="pl-1">
+                      <span className="ml-1 text-slate-800 dark:text-slate-350">{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl overflow-hidden shadow-chosen-sm">
+                <button
+                  onClick={() => setTipsOpen(!tipsOpen)}
+                  className="w-full p-4 flex justify-between items-center hover:bg-[#FAFBFC] dark:hover:bg-charcoal-800 transition-colors border-none text-left bg-transparent"
+                >
+                  <span className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-primary">Preparation Tips</span>
+                  {tipsOpen ? <ChevronUp className="h-4 w-4 text-[#A27B41]" /> : <ChevronDown className="h-4 w-4 text-chosen-text-muted" />}
+                </button>
+                {tipsOpen && (
+                  <ul className="p-5 pt-1 border-t border-[#F5F5F5] dark:border-charcoal-800/80 space-y-2 list-disc list-inside text-xs text-chosen-text-secondary leading-relaxed pl-6">
+                    {guide.preparationTips.map((tip, tIdx) => (
+                      <li key={tIdx} className="pl-1">
+                        <span className="ml-1 text-slate-800 dark:text-slate-350">{tip}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl overflow-hidden shadow-chosen-sm">
+                <button
+                  onClick={() => setMusclesOpen(!musclesOpen)}
+                  className="w-full p-4 flex justify-between items-center hover:bg-[#FAFBFC] dark:hover:bg-charcoal-800 transition-colors border-none text-left bg-transparent"
+                >
+                  <span className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-primary">Target Muscles & Equipment</span>
+                  {musclesOpen ? <ChevronUp className="h-4 w-4 text-[#A27B41]" /> : <ChevronDown className="h-4 w-4 text-chosen-text-muted" />}
+                </button>
+                {musclesOpen && (
+                  <div className="p-5 pt-2 border-t border-[#F5F5F5] dark:border-charcoal-800/80 space-y-4 text-xs">
+                    <div>
+                      <span className="font-bold text-[10px] text-chosen-text-muted uppercase tracking-wider block mb-2">Target Muscles</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {guide.targetMuscles.map((muscle, mIdx) => (
+                          <span key={mIdx} className="bg-[#A27B41]/10 text-[#A27B41] font-bold text-[10px] uppercase px-2.5 py-1 rounded-full">{muscle}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="font-bold text-[10px] text-chosen-text-muted uppercase tracking-wider block mb-1">Required Equipment</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-300">{guide.requiredEquipment}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-red-50/20 dark:bg-red-955/5 border border-red-200 dark:border-red-950/20 rounded-chosen-xl overflow-hidden shadow-chosen-sm">
+                <button
+                  onClick={() => setMistakesOpen(!mistakesOpen)}
+                  className="w-full p-4 flex justify-between items-center hover:bg-red-100/10 transition-colors border-none text-left bg-transparent"
+                >
+                  <span className="font-display font-bold text-xs uppercase tracking-wider text-red-650 dark:text-red-400">Common Mistakes to Avoid</span>
+                  {mistakesOpen ? <ChevronUp className="h-4 w-4 text-red-650" /> : <ChevronDown className="h-4 w-4 text-red-555" />}
+                </button>
+                {mistakesOpen && (
+                  <ul className="p-5 pt-1 border-t border-red-100 dark:border-red-955/25 space-y-2 list-disc list-inside text-xs text-red-800 dark:text-red-350 pl-6 leading-relaxed">
+                    {guide.commonMistakes.map((mistake, mIdx) => (
+                      <li key={mIdx} className="pl-1">
+                        <span className="ml-1">{mistake}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="bg-amber-50/20 dark:bg-amber-955/5 border border-amber-250 dark:border-amber-900/20 rounded-chosen-xl p-5 shadow-chosen-sm space-y-3">
+                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-455">
+                  <AlertTriangle className="h-5 w-5 shrink-0" />
+                  <span className="font-display font-bold text-xs uppercase tracking-wider">Safety Guidelines</span>
+                </div>
+                <ul className="space-y-1.5 list-disc list-inside text-xs text-amber-800 dark:text-amber-350 pl-2 leading-relaxed">
+                  {guide.safetyNotes.map((note, nIdx) => (
+                    <li key={nIdx}>{note}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="col-span-3 space-y-6">
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 p-5 rounded-chosen-xl shadow-chosen-sm text-left flex items-center justify-between gap-4">
+              <div className="space-y-1.5 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-chosen-text-muted block">Completion Status</span>
+                <h4 className="font-display font-bold text-sm text-[#0D0C18] dark:text-white truncate">
+                  {assignment.is_completed ? "Completed Today" : "Pending Practice"}
+                </h4>
+                <span className="text-[10px] text-chosen-text-secondary block font-medium">
+                  Best Accuracy: {bestScore}% | Avg: {avgAccuracyForExercise}%
+                </span>
+              </div>
+              
+              <div className="relative shrink-0 flex items-center justify-center h-14 w-14 select-none">
+                <svg className="transform -rotate-90 w-full h-full">
+                  <circle
+                    cx="28"
+                    cy="28"
+                    r={radiusDetail}
+                    stroke="currentColor"
+                    strokeWidth={strokeWidthDetail}
+                    fill="transparent"
+                    className="text-[#F5F5F5] dark:text-charcoal-800"
+                  />
+                  <circle
+                    cx="28"
+                    cy="28"
+                    r={radiusDetail}
+                    stroke={assignment.is_completed ? "#4F995E" : "#A27B41"}
+                    strokeWidth={strokeWidthDetail}
+                    fill="transparent"
+                    strokeDasharray={circumferenceDetail}
+                    strokeDashoffset={strokeDashoffsetDetail}
+                    strokeLinecap="round"
+                    className="transition-all duration-500 ease-out"
+                  />
+                </svg>
+                <span className="absolute text-[10px] font-bold text-chosen-text-primary">
+                  {progressPercentDetail}%
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 p-5 rounded-chosen-xl shadow-chosen-sm text-left space-y-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 bg-[#FAFBFC] dark:bg-charcoal-800 rounded-full flex items-center justify-center text-charcoal-500 shrink-0">
+                  <Heart className="h-4.5 w-4.5 text-red-500 fill-current" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="font-display font-bold text-xs text-chosen-text-primary truncate">Assigned Clinician</h4>
+                  <span className="text-[9px] text-[#9F9F9F] font-semibold block truncate">
+                    Dr. {docFirstName} {docLastName}
+                  </span>
+                </div>
+              </div>
+              <div className="text-[10px] bg-[#FAFBFC] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800/60 p-3 rounded-chosen-md text-chosen-text-secondary italic leading-relaxed">
+                "Ensure your camera settings are fully configured before starting. Pay careful attention to alignment suggestions in real-time."
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl p-5 space-y-5 text-left shadow-chosen-sm">
+              <div>
+                <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-primary flex items-center gap-1.5">
+                  <History className="h-4 w-4 text-chosen-text-muted" />
+                  Previous Sessions ({exerciseSessionsCount})
+                </h3>
+              </div>
+              
+              {sessionsForExercise.length === 0 ? (
+                <p className="text-[10px] text-chosen-text-muted text-center py-4">No sessions completed yet.</p>
+              ) : (
+                <div className="space-y-3 max-h-48 overflow-y-auto pr-1 panel-scroll">
+                  {sessionsForExercise.map((session) => (
+                    <div key={session.id} className="flex items-center justify-between p-2.5 bg-[#FAFBFC] dark:bg-charcoal-900 border border-[#E5E5E5] dark:border-charcoal-800/50 rounded-chosen-md text-[10px] hover:translate-x-0.5 transition-transform">
+                      <div className="min-w-0 text-left space-y-0.5">
+                        <span className="font-bold text-slate-800 dark:text-slate-200 block truncate">
+                          {new Date(session.completed_at || session.created_at).toLocaleDateString()}
+                        </span>
+                        <span className="text-[8px] text-chosen-text-muted block font-mono">
+                          {Math.round(session.range_of_motion || 0)}° ROM | {session.duration_seconds || 0}s
+                        </span>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="font-bold text-[#A27B41] block">
+                          {session.avg_score || session.score}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Tablet Viewport (768px - 1024px) */}
+        <div className="hidden md:grid lg:hidden grid-cols-2 gap-6 max-w-[1440px] mx-auto px-6 py-6 items-start">
+          <div className="col-span-2 space-y-4 border-b border-[#E5E5E5] dark:border-charcoal-800 pb-4">
+            <div className="flex items-center gap-2 text-xs font-semibold text-chosen-text-muted">
+              <button onClick={() => setSelectedAssignment(null)} className="hover:text-[#A27B41] transition-colors border-none bg-transparent">My Plan</button>
+              <ChevronRight className="h-3.5 w-3.5" />
+              <span className="text-[#A27B41]">Exercise Details</span>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-xl font-display font-bold text-[#0D0C18] dark:text-white leading-tight">{ex.name}</h1>
+                <span className="text-2xs font-bold text-[#A27B41] uppercase tracking-wider block mt-0.5">{meta.category}</span>
+              </div>
+              <Badge variant={assignment.is_completed ? "success" : "neutral"}>
+                {assignment.is_completed ? "Completed" : "Pending"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl overflow-hidden shadow-chosen-sm relative">
+              <img
+                src={ex.thumbnail_url || 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=600'}
+                alt={ex.name}
+                className="w-full h-48 object-cover"
+              />
+            </div>
+
+            <div className="bg-[#FAFBFC] dark:bg-charcoal-850 border border-[#E5E5E5] p-5 rounded-chosen-xl space-y-3">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-muted">Quick Specifications</h3>
+              <div className="grid grid-cols-2 gap-3.5 text-xs">
+                <div>
+                  <span className="text-[10px] text-chosen-text-muted block">Target Area</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.bodyPart}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-chosen-text-muted block">Difficulty</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.difficulty}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-chosen-text-muted block">Sets & Repetitions</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.sets} sets x {meta.reps} reps</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-chosen-text-muted block">Estimated Duration</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{meta.duration}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] p-5 rounded-chosen-xl shadow-chosen-sm space-y-2.5">
+              <Button
+                variant="primary"
+                className="w-full flex items-center justify-center gap-2 font-bold py-2.5 text-xs btn-primary shadow-sm"
+                onClick={() => navigate('/tracker', { state: { exerciseName: ex.name, rules: ex.rules } })}
+              >
+                Start Exercise
+              </Button>
+              <Button
+                variant="secondary"
+                className="w-full flex items-center justify-center gap-2 font-bold py-2 text-xs"
+                onClick={() => setSelectedAssignment(null)}
+              >
+                Back to My Plan
+              </Button>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] p-5 rounded-chosen-xl shadow-chosen-sm flex items-center gap-3">
+              <Heart className="h-5 w-5 text-red-500 fill-current shrink-0" />
+              <div className="text-xs">
+                <span className="text-[10px] text-chosen-text-muted block">Supervising Physical Therapist</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">Dr. {docFirstName} {docLastName}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-xl p-5 space-y-4">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-primary border-b pb-2">Exercise Instructions</h3>
+              <ol className="list-decimal list-inside text-xs text-chosen-text-secondary pl-2 space-y-2.5">
+                {guide.instructions.slice(0, 4).map((step, stepIdx) => (
+                  <li key={stepIdx} className="pl-1">
+                    <span className="ml-1 text-slate-800 dark:text-slate-350">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] p-4 rounded-chosen-xl shadow-chosen-sm flex items-center justify-between gap-4">
+              <div className="text-xs">
+                <span className="text-[9px] uppercase font-bold text-chosen-text-muted block">Completion status</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{assignment.is_completed ? "Completed Today" : "Pending practice session"}</span>
+              </div>
+              <Badge variant={assignment.is_completed ? "success" : "neutral"} styleType="outline">
+                {assignment.is_completed ? "100% Done" : "0% Done"}
+              </Badge>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-xl overflow-hidden shadow-chosen-sm">
+                <button onClick={() => setTipsOpen(!tipsOpen)} className="w-full p-4 flex justify-between items-center text-left border-none bg-transparent">
+                  <span className="font-display font-bold text-2xs uppercase tracking-wider text-chosen-text-primary">Preparation Tips</span>
+                  {tipsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+                {tipsOpen && (
+                  <ul className="p-4 pt-1 border-t list-disc list-inside text-xs text-chosen-text-secondary pl-6 space-y-1.5">
+                    {guide.preparationTips.map((tip, idx) => <li key={idx}>{tip}</li>)}
+                  </ul>
+                )}
+              </div>
+
+              <div className="bg-amber-50/20 dark:bg-amber-955/5 border border-amber-250 p-4 rounded-chosen-xl flex gap-2.5 text-xs text-amber-800 dark:text-amber-350 leading-relaxed">
+                <AlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block uppercase tracking-wider text-[10px] mb-1">Safety Warning</span>
+                  <span>{guide.safetyNotes[0]}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-xl p-5 space-y-4">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-primary">Previous Sessions ({exerciseSessionsCount})</h3>
+              {sessionsForExercise.slice(0, 3).map((session) => (
+                <div key={session.id} className="flex justify-between items-center text-xs p-2 bg-[#FAFBFC] border rounded-chosen-md">
+                  <span>{new Date(session.completed_at || session.created_at).toLocaleDateString()}</span>
+                  <span className="font-bold text-[#A27B41]">{session.avg_score || session.score}% Form</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Viewport (<768px) */}
+        <div className="block md:hidden space-y-6 pb-20">
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-chosen-text-muted">
+            <button onClick={() => setSelectedAssignment(null)} className="flex items-center gap-1 hover:text-[#A27B41] transition-colors border-none text-[10px] font-bold bg-transparent">
+              <ArrowLeft className="h-3 w-3" /> Back
+            </button>
+            <ChevronRight className="h-3.5 w-3.5" />
+            <span>Details</span>
+          </div>
+
+          <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-xl overflow-hidden shadow-chosen-sm relative text-left">
+            <img
+              src={ex.thumbnail_url || 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?q=80&w=300'}
+              alt={ex.name}
+              className="w-full h-44 object-cover"
+            />
+            <div className="absolute bottom-4 left-4 right-4 text-left z-10 space-y-1">
+              <Badge variant="info" styleType="solid">ROM Target: {ex.target_rom || 120}°</Badge>
+              <h1 className="text-lg font-display font-bold text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.65)] mt-1">{ex.name}</h1>
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent pointer-events-none" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center text-[10px] text-chosen-text-secondary select-none font-semibold">
+            <div className="bg-[#FAFBFC] dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-md p-2.5">
+              <span className="text-[8px] text-chosen-text-muted block uppercase mb-0.5">Sets Goal</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{meta.sets} sets</span>
+            </div>
+            <div className="bg-[#FAFBFC] dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-md p-2.5">
+              <span className="text-[8px] text-chosen-text-muted block uppercase mb-0.5">Reps / Set</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{meta.reps} reps</span>
+            </div>
+            <div className="bg-[#FAFBFC] dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-md p-2.5">
+              <span className="text-[8px] text-chosen-text-muted block uppercase mb-0.5">Rest Duration</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{meta.rest}</span>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] p-4 rounded-chosen-xl shadow-chosen-sm text-xs text-left space-y-2 leading-relaxed">
+            <h4 className="font-display font-bold text-xs uppercase tracking-wider text-chosen-text-primary">About this exercise</h4>
+            <p className="text-chosen-text-secondary">{guide.description}</p>
+          </div>
+
+          <div className="space-y-2.5">
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-xl overflow-hidden shadow-chosen-sm text-left">
+              <div className="p-4 border-b">
+                <span className="font-display font-bold text-[10px] uppercase tracking-wider text-chosen-text-primary">Execution Steps</span>
+              </div>
+              <ol className="p-4 space-y-2.5 list-decimal list-inside text-xs text-chosen-text-secondary pl-5 leading-relaxed">
+                {guide.instructions.map((step, idx) => (
+                  <li key={idx} className="pl-1">
+                    <span className="ml-1 text-slate-800 dark:text-slate-350">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] rounded-chosen-xl overflow-hidden shadow-chosen-sm text-left">
+              <button onClick={() => setTipsOpen(!tipsOpen)} className="w-full p-4 flex justify-between items-center text-left border-none bg-transparent">
+                <span className="font-display font-bold text-[10px] uppercase tracking-wider text-chosen-text-primary">Preparation Tips</span>
+                {tipsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+              {tipsOpen && (
+                <ul className="p-4 pt-1 border-t list-disc list-inside text-xs text-chosen-text-secondary pl-5 space-y-1.5">
+                  {guide.preparationTips.map((tip, idx) => <li key={idx}>{tip}</li>)}
+                </ul>
+              )}
+            </div>
+
+            <div className="bg-red-50/20 dark:bg-red-955/5 border border-red-200 dark:border-red-950/25 rounded-chosen-xl overflow-hidden shadow-chosen-sm text-left">
+              <button onClick={() => setMistakesOpen(!mistakesOpen)} className="w-full p-4 flex justify-between items-center text-left border-none bg-transparent">
+                <span className="font-display font-bold text-[10px] uppercase tracking-wider text-red-650 dark:text-red-400">Common Mistakes</span>
+                {mistakesOpen ? <ChevronUp className="h-4 w-4 text-red-650" /> : <ChevronDown className="h-4 w-4 text-red-550" />}
+              </button>
+              {mistakesOpen && (
+                <ul className="p-4 pt-1 border-t list-disc list-inside text-xs text-red-800 dark:text-red-350 pl-5 space-y-1.5">
+                  {guide.commonMistakes.map((mistake, idx) => <li key={idx}>{mistake}</li>)}
+                </ul>
+              )}
+            </div>
+
+            <div className="bg-amber-50/20 dark:bg-amber-955/5 border border-amber-250 p-4 rounded-chosen-xl flex gap-2.5 text-xs text-left text-amber-800 dark:text-amber-350">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <div>
+                <span className="font-bold block uppercase tracking-wider text-[10px] mb-0.5">Safety Warning</span>
+                <span>{guide.safetyNotes[0]}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] p-4 rounded-chosen-xl shadow-chosen-sm flex items-center gap-3">
+            <Heart className="h-4.5 w-4.5 text-red-500 fill-current shrink-0" />
+            <div className="text-xs text-left">
+              <span className="text-[9px] text-chosen-text-muted block">Clinician Support</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200">Dr. {docFirstName} {docLastName}</span>
+            </div>
+          </div>
+
+          <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/95 dark:bg-charcoal-900/95 backdrop-blur border-t border-[#E5E5E5] dark:border-charcoal-800 flex gap-3 z-40 select-none">
+            <Button
+              variant="secondary"
+              className="flex-1 font-bold py-3 text-xs"
+              onClick={() => setSelectedAssignment(null)}
+            >
+              Back
+            </Button>
+            <Button
+              variant="primary"
+              className="flex-[2] font-bold py-3 text-xs btn-primary shadow-sm"
+              onClick={() => navigate('/tracker', { state: { exerciseName: ex.name, rules: ex.rules } })}
+            >
+              Start Session
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -1074,7 +1766,7 @@ const PatientDashboard: React.FC = () => {
         <Home className="h-4.5 w-4.5" />
         <span className="text-[9px] font-bold uppercase tracking-wider">Home</span>
       </button>
-      <button onClick={() => setMobileTab('exercises')} className={cn("flex flex-col items-center gap-1.5 flex-1 py-1 transition-all active:scale-90", mobileTab === 'exercises' ? "text-[#A27B41]" : "text-[#A3A3A3]")}>
+      <button onClick={() => { setMobileTab('exercises'); setSelectedAssignment(null); }} className={cn("flex flex-col items-center gap-1.5 flex-1 py-1 transition-all active:scale-90", mobileTab === 'exercises' ? "text-[#A27B41]" : "text-[#A3A3A3]")}>
         <FileSpreadsheet className="h-4.5 w-4.5" />
         <span className="text-[9px] font-bold uppercase tracking-wider">My Plan</span>
       </button>
@@ -1102,7 +1794,7 @@ const PatientDashboard: React.FC = () => {
         >
           <div className="hidden lg:flex items-center gap-6 text-sm font-semibold select-none">
             <button onClick={() => setMobileTab('overview')} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'overview' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>Home</button>
-            <button onClick={() => setMobileTab('exercises')} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'exercises' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>My Plan</button>
+            <button onClick={() => { setMobileTab('exercises'); setSelectedAssignment(null); }} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'exercises' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>My Plan</button>
             <button onClick={() => setMobileTab('progress')} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'progress' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>Move</button>
             <button onClick={() => setMobileTab('profile')} className={cn("pb-1 transition-all border-b-2 hover:text-[#A27B41]", mobileTab === 'profile' ? "border-[#A27B41] text-[#A27B41] font-bold" : "border-transparent text-chosen-text-muted")}>Profile</button>
           </div>
@@ -1134,8 +1826,9 @@ const PatientDashboard: React.FC = () => {
           )}
 
           {mobileTab === 'exercises' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 lg:py-8 text-left items-start animate-fade-in">
-              {/* Header Row */}
+            selectedAssignment ? renderExerciseDetails() : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 lg:py-8 text-left items-start animate-fade-in">
+                {/* Header Row */}
               <div className="col-span-12 flex justify-between items-center border-b border-[#E5E5E5] dark:border-charcoal-800 pb-4 mb-2">
                 <div className="space-y-1">
                   <h1 className="text-2xl font-display font-bold text-[#0D0C18] dark:text-white">My Plan</h1>
@@ -1230,6 +1923,7 @@ const PatientDashboard: React.FC = () => {
                 {upcomingSchedule}
               </div>
             </div>
+          )
           )}
 
           {mobileTab === 'progress' && (
@@ -1255,7 +1949,8 @@ const PatientDashboard: React.FC = () => {
           )}
 
           {mobileTab === 'exercises' && (
-            <div className="space-y-6 animate-fade-in text-left">
+            selectedAssignment ? renderExerciseDetails() : (
+              <div className="space-y-6 animate-fade-in text-left">
               <div className="flex justify-between items-center border-b border-[#E5E5E5] dark:border-charcoal-800 pb-4">
                 <h1 className="text-xl font-display font-bold text-[#0D0C18] dark:text-white">My Plan</h1>
                 <span className="text-xs font-semibold text-[#A27B41]">
@@ -1287,6 +1982,7 @@ const PatientDashboard: React.FC = () => {
                 </div>
               </div>
             </div>
+          )
           )}
 
           {mobileTab === 'progress' && (
@@ -1312,11 +2008,13 @@ const PatientDashboard: React.FC = () => {
             </div>
           )}
           {mobileTab === 'exercises' && (
-            <div className="space-y-6 animate-slide-up text-left">
-              <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl p-4 space-y-3 shadow-chosen-sm">{calendarRow}</div>
-              {progressRingCard}
-              {renderMyPlanExercises()}
-            </div>
+            selectedAssignment ? renderExerciseDetails() : (
+              <div className="space-y-6 animate-slide-up text-left">
+                <div className="bg-white dark:bg-charcoal-850 border border-[#E5E5E5] dark:border-charcoal-800 rounded-chosen-xl p-4 space-y-3 shadow-chosen-sm">{calendarRow}</div>
+                {progressRingCard}
+                {renderMyPlanExercises()}
+              </div>
+            )
           )}
           {mobileTab === 'progress' && (
             <div className="space-y-6 text-left animate-slide-up">
