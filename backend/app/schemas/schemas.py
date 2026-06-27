@@ -517,3 +517,36 @@ class EnvironmentComponentCreate(BaseModel):
     icon_url: Optional[str] = None
     setup_instructions: Optional[str] = None
     affects_tracking: bool = False
+
+
+class SessionFrameAnnotationCreate(BaseModel):
+    frame_number: int
+    issue_tags: Optional[List[str]] = None
+    notes: Optional[str] = None
+    suggestions: Optional[str] = None
+    visible_to_patient: bool = True
+
+
+class SessionFrameAnnotationUpdate(BaseModel):
+    frame_number: Optional[int] = None
+    issue_tags: Optional[List[str]] = None
+    notes: Optional[str] = None
+    suggestions: Optional[str] = None
+    visible_to_patient: Optional[bool] = None
+
+
+class SessionFrameAnnotationResponse(BaseModel):
+    id: int
+    session_id: int
+    patient_id: str
+    frame_number: int
+    issue_tags: Optional[List[str]] = None
+    notes: Optional[str] = None
+    suggestions: Optional[str] = None
+    created_by: Optional[str] = None
+    visible_to_patient: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

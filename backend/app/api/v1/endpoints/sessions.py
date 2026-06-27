@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import List, Optional
 
 from app.core.database import get_db
 from app.core.security import get_current_user, UserPayload
-from app.models.models import MotionSession, MotionFrame, PatientExerciseRecord
+from app.models.models import MotionSession, MotionFrame, PatientExerciseRecord, SessionFrameAnnotation
 from app.services.query_helpers import session_load_options
 from app.services.patient_resolver import resolve_patient_for_user
 from app.services.metric_definitions import extract_session_metrics
@@ -16,6 +16,7 @@ from app.schemas.schemas import (
     SessionComparisonResponse,
     MetricCompare,
     RecordMetricCompare,
+    SessionFrameAnnotationResponse,
 )
 
 router = APIRouter()
@@ -126,6 +127,32 @@ def get_session_accuracy(
         errors = raw_errors.get("errors", [])
 
     return SessionAccuracyResponse(accuracy_score=accuracy_score, detected_errors=errors)
+
+
+@router.get("/{session_id}/frame-annotations", response_model=List[SessionFrameAnnotationResponse])
+def get_session_frame_annotations(
+    session_id: int,
+    current_user: UserPayload = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = (
+        db.query(MotionSession)
+        .filter(MotionSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+    _authorize_session(session, current_user, db)
+
+    query = db.query(SessionFrameAnnotation).filter(SessionFrameAnnotation.session_id == session_id)
+    if current_user.role.lower() != "admin":
+        query = query.filter(SessionFrameAnnotation.visible_to_patient == True)
+
+    return query.order_by(
+        SessionFrameAnnotation.frame_number.asc(),
+        SessionFrameAnnotation.created_at.asc(),
+    ).all()
 
 
 @router.get("/{session_id}/comparison", response_model=SessionComparisonResponse)

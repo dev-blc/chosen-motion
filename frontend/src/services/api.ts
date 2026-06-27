@@ -406,6 +406,70 @@ export async function fetchEnvironmentComponents() {
   return request('/admin/environment-components');
 }
 
+export async function fetchPatientLimitations(patientId: string) {
+  return request(`/admin/patients/${patientId}/limitations`);
+}
+
+export async function createPatientLimitation(
+  patientId: string,
+  data: {
+    scope_type: string;
+    scope_id?: number;
+    limitation_type: string;
+    parameters: Record<string, unknown>;
+    notes?: string;
+    active?: boolean;
+  }
+) {
+  return request(`/admin/patients/${patientId}/limitations`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updatePatientLimitation(
+  patientId: string,
+  limitationId: number,
+  data: Record<string, unknown>
+) {
+  return request(`/admin/patients/${patientId}/limitations/${limitationId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePatientLimitation(patientId: string, limitationId: number) {
+  return request(`/admin/patients/${patientId}/limitations/${limitationId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchFrameAnnotations(sessionId: number) {
+  return request(`/motion-sessions/${sessionId}/frame-annotations`);
+}
+
+export async function createFrameAnnotation(
+  sessionId: number,
+  data: {
+    frame_number: number;
+    issue_tags?: string[];
+    notes?: string;
+    suggestions?: string;
+    visible_to_patient?: boolean;
+  }
+) {
+  return request(`/admin/sessions/${sessionId}/frame-annotations`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteFrameAnnotation(sessionId: number, annotationId: number) {
+  return request(`/admin/sessions/${sessionId}/frame-annotations/${annotationId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function endSquatSession(sessionId: number) {
   return request('/exercise/squat/end', {
     method: 'POST',

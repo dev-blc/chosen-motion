@@ -7,7 +7,7 @@ from typing import List, Optional
 from app.core.database import get_db
 from app.core.security import require_admin, UserPayload
 from app.core.config import settings
-from app.models.models import Patient, MotionSession as DbSession, User, Consent, ExerciseAssignment, Exercise, ExerciseRule, PatientLimitation, EnvironmentComponent
+from app.models.models import Patient, MotionSession as DbSession, User, Consent, ExerciseAssignment, Exercise, ExerciseRule, PatientLimitation, EnvironmentComponent, SessionFrameAnnotation
 from app.api.v1.endpoints.auth import generate_patient_id, get_supabase_auth_url
 from app.services.query_helpers import session_load_options, assignment_load_options
 from app.schemas.schemas import (
@@ -33,6 +33,9 @@ from app.schemas.schemas import (
     PatientLimitationResponse,
     EnvironmentComponentCreate,
     EnvironmentComponentResponse,
+    SessionFrameAnnotationCreate,
+    SessionFrameAnnotationUpdate,
+    SessionFrameAnnotationResponse,
 )
 
 router = APIRouter()
@@ -785,6 +788,110 @@ def delete_patient_limitation(
     db.delete(limitation)
     db.commit()
     return MessageResponse(message="Limitation removed.")
+
+
+# ==========================================
+# Session Frame Annotations (Clinician Notes)
+# ==========================================
+
+def _get_session_or_404(session_id: int, db: Session) -> DbSession:
+    session = (
+        db.query(DbSession)
+        .filter(DbSession.id == session_id)
+        .options(*session_load_options())
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+    return session
+
+
+@router.get("/sessions/{session_id}/frame-annotations", response_model=List[SessionFrameAnnotationResponse])
+def list_session_frame_annotations(
+    session_id: int,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    _get_session_or_404(session_id, db)
+    return (
+        db.query(SessionFrameAnnotation)
+        .filter(SessionFrameAnnotation.session_id == session_id)
+        .order_by(SessionFrameAnnotation.frame_number.asc(), SessionFrameAnnotation.created_at.asc())
+        .all()
+    )
+
+
+@router.post("/sessions/{session_id}/frame-annotations", response_model=SessionFrameAnnotationResponse, status_code=status.HTTP_201_CREATED)
+def create_session_frame_annotation(
+    session_id: int,
+    data: SessionFrameAnnotationCreate,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    session = _get_session_or_404(session_id, db)
+    annotation = SessionFrameAnnotation(
+        session_id=session.id,
+        patient_id=session.patient_id,
+        frame_number=data.frame_number,
+        issue_tags=data.issue_tags or [],
+        notes=data.notes,
+        suggestions=data.suggestions,
+        created_by=current_user.email,
+        visible_to_patient=data.visible_to_patient,
+    )
+    db.add(annotation)
+    db.commit()
+    db.refresh(annotation)
+    return annotation
+
+
+@router.put("/sessions/{session_id}/frame-annotations/{annotation_id}", response_model=SessionFrameAnnotationResponse)
+def update_session_frame_annotation(
+    session_id: int,
+    annotation_id: int,
+    data: SessionFrameAnnotationUpdate,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    _get_session_or_404(session_id, db)
+    annotation = db.query(SessionFrameAnnotation).filter(
+        SessionFrameAnnotation.id == annotation_id,
+        SessionFrameAnnotation.session_id == session_id,
+    ).first()
+    if not annotation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Annotation not found.")
+    if data.frame_number is not None:
+        annotation.frame_number = data.frame_number
+    if data.issue_tags is not None:
+        annotation.issue_tags = data.issue_tags
+    if data.notes is not None:
+        annotation.notes = data.notes
+    if data.suggestions is not None:
+        annotation.suggestions = data.suggestions
+    if data.visible_to_patient is not None:
+        annotation.visible_to_patient = data.visible_to_patient
+    db.commit()
+    db.refresh(annotation)
+    return annotation
+
+
+@router.delete("/sessions/{session_id}/frame-annotations/{annotation_id}", response_model=MessageResponse)
+def delete_session_frame_annotation(
+    session_id: int,
+    annotation_id: int,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    _get_session_or_404(session_id, db)
+    annotation = db.query(SessionFrameAnnotation).filter(
+        SessionFrameAnnotation.id == annotation_id,
+        SessionFrameAnnotation.session_id == session_id,
+    ).first()
+    if not annotation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Annotation not found.")
+    db.delete(annotation)
+    db.commit()
+    return MessageResponse(message="Frame annotation deleted.")
 
 
 # ==========================================

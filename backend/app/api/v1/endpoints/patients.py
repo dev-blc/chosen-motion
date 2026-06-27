@@ -137,6 +137,7 @@ def upload_motion_session(
 
     if session_data.telemetry_data:
         from app.services.error_detection import analyze_session_frames
+        from app.services.metric_calculator import compute_extended_metrics
         target_rom_val = exercise.target_rom if (exercise and exercise.target_rom) else None
         ex_name = exercise.name if exercise else (session_data.title or "")
 
@@ -152,8 +153,27 @@ def upload_motion_session(
         max_rom_val = analysis["max_rom"]
         rom = max_rom_val
 
+        extended = compute_extended_metrics(session_data.telemetry_data, ex_name)
+        joint_metrics = extended.get("joint_metrics")
+        pace = extended.get("pace")
+        rotation = extended.get("rotation")
+        fatigue = extended.get("fatigue")
+        if extended.get("repetitions_detected"):
+            repetitions = extended["repetitions_detected"]
+    else:
+        joint_metrics = None
+        pace = None
+        rotation = None
+        fatigue = None
+
     from app.services.rules_engine import evaluate_session_rules
-    session_status = evaluate_session_rules(rules, rom, speed, symmetry)
+    from app.services.prescription_service import get_active_limitations
+    limitations = get_active_limitations(db, patient.patient_id, exercise_id)
+    session_status = evaluate_session_rules(
+        rules, rom, speed, symmetry,
+        limitations=limitations,
+        exercise_id=exercise_id,
+    )
 
     db_session = DbSession(
         patient_id=patient.patient_id,
@@ -189,7 +209,11 @@ def upload_motion_session(
         repetitions=repetitions,
         accuracy_score=accuracy_score,
         detected_errors=detected_errors,
-        max_rom=max_rom_val
+        max_rom=max_rom_val,
+        joint_metrics=joint_metrics,
+        pace=pace,
+        rotation=rotation,
+        fatigue=fatigue,
     )
     db.add(db_metric)
 

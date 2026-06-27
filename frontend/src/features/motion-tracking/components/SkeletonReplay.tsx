@@ -21,10 +21,24 @@ interface MotionFrame {
 interface SkeletonReplayProps {
   frames: MotionFrame[];
   exerciseName?: string;
+  currentFrameIdx?: number;
+  onFrameChange?: (idx: number) => void;
+  annotatedFrames?: number[];
 }
 
-export const SkeletonReplay: React.FC<SkeletonReplayProps> = ({ frames, exerciseName = 'Exercise' }) => {
-  const [currentFrameIdx, setCurrentFrameIdx] = useState<number>(0);
+export const SkeletonReplay: React.FC<SkeletonReplayProps> = ({
+  frames,
+  exerciseName = 'Exercise',
+  currentFrameIdx: controlledIdx,
+  onFrameChange,
+  annotatedFrames = [],
+}) => {
+  const [internalIdx, setInternalIdx] = useState<number>(0);
+  const currentFrameIdx = controlledIdx !== undefined ? controlledIdx : internalIdx;
+  const setCurrentFrameIdx = (idx: number) => {
+    if (onFrameChange) onFrameChange(idx);
+    if (controlledIdx === undefined) setInternalIdx(idx);
+  };
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1); // 0.5x, 1x, 2x
   const [repsAtFrame, setRepsAtFrame] = useState<number[]>([]);
@@ -504,6 +518,25 @@ export const SkeletonReplay: React.FC<SkeletonReplayProps> = ({ frames, exercise
             }}
             className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500 focus:outline-none"
           />
+          {annotatedFrames.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {annotatedFrames.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => {
+                    setCurrentFrameIdx(f);
+                    if (isPlaying) setIsPlaying(false);
+                  }}
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                    f === currentFrameIdx ? 'bg-yellow-500 text-slate-950' : 'bg-slate-800 text-yellow-500'
+                  }`}
+                >
+                  F{f + 1}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}

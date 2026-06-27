@@ -16,6 +16,7 @@ def sync():
         ("ALTER TABLE motion_metrics ADD COLUMN joint_metrics JSON", "joint_metrics"),
         ("ALTER TABLE motion_metrics ADD COLUMN pace JSON", "pace"),
         ("ALTER TABLE motion_metrics ADD COLUMN rotation JSON", "rotation"),
+        ("ALTER TABLE motion_metrics ADD COLUMN fatigue JSON", "fatigue"),
         ("ALTER TABLE exercises ADD COLUMN capture_config JSON", "capture_config"),
         ("ALTER TABLE exercises ADD COLUMN metric_definitions JSON", "metric_definitions"),
         ("ALTER TABLE exercises ADD COLUMN guide_content JSON", "guide_content"),

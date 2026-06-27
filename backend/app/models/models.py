@@ -152,6 +152,9 @@ class MotionSession(Base):
     metrics: Mapped[List["MotionMetric"]] = relationship("MotionSession" if False else "MotionMetric", back_populates="session", cascade="all, delete-orphan")
     frames: Mapped[List["MotionFrame"]] = relationship("MotionFrame", back_populates="session", cascade="all, delete-orphan")
     session_environment: Mapped[Optional["SessionEnvironment"]] = relationship("SessionEnvironment", back_populates="session", uselist=False, cascade="all, delete-orphan")
+    frame_annotations: Mapped[List["SessionFrameAnnotation"]] = relationship(
+        "SessionFrameAnnotation", back_populates="session", cascade="all, delete-orphan"
+    )
 
     @property
     def title(self) -> str:
@@ -195,7 +198,11 @@ class MotionSession(Base):
                 "repetitions": getattr(m, "repetitions", 0) or 0,
                 "accuracy_score": getattr(m, "accuracy_score", 0.0) or 0.0,
                 "max_rom": getattr(m, "max_rom", 0.0) or 0.0,
-                "detected_errors": getattr(m, "detected_errors", {}) or {}
+                "detected_errors": getattr(m, "detected_errors", {}) or {},
+                "joint_metrics": getattr(m, "joint_metrics", {}) or {},
+                "pace": getattr(m, "pace", {}) or {},
+                "rotation": getattr(m, "rotation", {}) or {},
+                "fatigue": getattr(m, "fatigue", {}) or {},
             }
         return {
             "rom": 0.0,
@@ -205,7 +212,11 @@ class MotionSession(Base):
             "repetitions": 0,
             "accuracy_score": 0.0,
             "max_rom": 0.0,
-            "detected_errors": {}
+            "detected_errors": {},
+            "joint_metrics": {},
+            "pace": {},
+            "rotation": {},
+            "fatigue": {},
         }
 
     @property
@@ -230,9 +241,28 @@ class MotionMetric(Base):
     joint_metrics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     pace: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     rotation: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    fatigue: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relationships
     session: Mapped["MotionSession"] = relationship("MotionSession", back_populates="metrics")
+
+
+class SessionFrameAnnotation(Base):
+    __tablename__ = "session_frame_annotations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("motion_sessions.id", ondelete="CASCADE"), nullable=False)
+    patient_id: Mapped[str] = mapped_column(String(50), ForeignKey("patients.patient_id", ondelete="CASCADE"), nullable=False)
+    frame_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    issue_tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(4000), nullable=True)
+    suggestions: Mapped[Optional[str]] = mapped_column(String(4000), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    visible_to_patient: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    session: Mapped["MotionSession"] = relationship("MotionSession", back_populates="frame_annotations")
 
 
 class WebsiteContent(Base):

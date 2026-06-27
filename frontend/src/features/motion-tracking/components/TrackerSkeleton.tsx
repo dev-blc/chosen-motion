@@ -1150,15 +1150,17 @@ const TrackerSkeleton: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Placeholders for Symmetry & Stability as requested */}
+                {/* Live symmetry & torso from joint tracking */}
                 <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-850/60 text-left">
                   <span className="text-[9px] text-slate-500 block font-bold uppercase">Symmetry</span>
-                  <span className="font-semibold text-xs text-slate-300 block mt-0.5">1.0 (Balanced)</span>
+                  <span className="font-semibold text-xs text-slate-300 block mt-0.5">
+                    {Math.max(10, Math.min(100, Math.round(100 - Math.abs(liveAngles.knee_l - liveAngles.knee_r) * 3)))}%
+                  </span>
                 </div>
 
                 <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-850/60 text-left">
-                  <span className="text-[9px] text-slate-500 block font-bold uppercase">Form Stability</span>
-                  <span className="font-semibold text-xs text-slate-300 block mt-0.5">96% (Stable)</span>
+                  <span className="text-[9px] text-slate-500 block font-bold uppercase">Torso Lean</span>
+                  <span className="font-semibold text-xs text-slate-300 block mt-0.5">{liveAngles.torso}°</span>
                 </div>
               </div>
             </div>
@@ -1182,6 +1184,12 @@ const TrackerSkeleton: React.FC = () => {
                 <div className="p-2 bg-slate-900/50 rounded-xl border border-slate-850/60">
                   <span className="text-[9px] text-slate-500 block">Knee</span>
                   <span className="font-mono text-slate-200 mt-0.5 block">{liveAngles.knee_l}° / {liveAngles.knee_r}°</span>
+                </div>
+                <div className="p-2 bg-slate-900/50 rounded-xl border border-slate-850/60 col-span-2">
+                  <span className="text-[9px] text-slate-500 block">Fatigue watch (rep #{reps || 1})</span>
+                  <span className="font-mono text-slate-400 mt-0.5 block text-[10px]">
+                    Post-session analysis tracks elbow, hip & knee fatigue per rep
+                  </span>
                 </div>
               </div>
             </div>

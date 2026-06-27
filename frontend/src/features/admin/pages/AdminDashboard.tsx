@@ -66,6 +66,7 @@ import {
 } from '@/components/layout/LayoutComponents';
 import { ExerciseRulesEditor } from '@/features/admin/components/ExerciseRulesEditor';
 import { AssignmentConfigurator } from '@/features/admin/components/AssignmentConfigurator';
+import { PatientLimitations } from '@/features/admin/components/PatientLimitations';
 
 type Section = 'dashboard' | 'patients' | 'exercises' | 'reports' | 'analytics' | 'content' | 'settings';
 
@@ -598,6 +599,15 @@ const AdminDashboard: React.FC = () => {
           })
         )}
       </div>
+
+      {selectedPatientId && (
+        <PatientLimitations
+          patientId={selectedPatientId}
+          exerciseOptions={(patientDetail.assignments || [])
+            .filter((a) => a.exercise)
+            .map((a) => ({ id: a.exercise_id, name: a.exercise?.name || `Exercise ${a.exercise_id}` }))}
+        />
+      )}
 
       {/* Sessions progress history */}
       <div className="space-y-2">
