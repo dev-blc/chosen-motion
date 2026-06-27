@@ -20,6 +20,7 @@ import { PositionAnalysis } from './PositionAnalysis';
 import { FatiguePanel } from './FatiguePanel';
 import { FrameAnnotationEditor } from './FrameAnnotationEditor';
 import { ClinicianNotesPanel } from './ClinicianNotesPanel';
+import { EnvironmentBanner } from './EnvironmentBanner';
 import type { FrameAnnotation } from './FrameAnnotationEditor';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Status';
@@ -201,6 +202,9 @@ export const SessionReplayPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Environment context */}
+      <EnvironmentBanner environment={session.environment_context} />
 
       {/* Full Width Metrics Deck */}
       <MetricsPanel

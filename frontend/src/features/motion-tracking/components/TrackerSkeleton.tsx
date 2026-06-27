@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSession } from '@/services/api';
+import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSession, fetchAssignmentPrescription } from '@/services/api';
 import MotionTracking from './MotionTracking';
 import SkeletonMiniViewer from './SkeletonMiniViewer';
+import { EnvironmentChecklist, type EnvironmentSelection } from './EnvironmentChecklist';
 import { PoseBuffer, calculateAngle, computeFrameConfidence } from '../utils/poseProcessor';
 import { GestureTrigger } from '../utils/gestureTrigger';
 import { 
@@ -34,8 +35,10 @@ const TrackerSkeleton: React.FC = () => {
   
   const [active, setActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [step, setStep] = useState<'consent' | 'permission' | 'ready' | 'countdown' | 'recording' | 'processing' | 'success' | 'error'>('consent');
+  const [step, setStep] = useState<'consent' | 'permission' | 'environment' | 'ready' | 'countdown' | 'recording' | 'processing' | 'success' | 'error'>('consent');
   const [errorType, setErrorType] = useState<'camera_unavailable' | 'permission_denied' | 'detection_failed' | 'upload_failed' | 'network_lost' | 'timeout' | null>(null);
+  const [environmentSelection, setEnvironmentSelection] = useState<EnvironmentSelection | null>(null);
+  const [prescription, setPrescription] = useState<any>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [isNewPersonalBest, setIsNewPersonalBest] = useState(false);
   const [uploadedSessionId, setUploadedSessionId] = useState<number | null>(null);
@@ -112,6 +115,13 @@ const TrackerSkeleton: React.FC = () => {
   const handleStopRef = useRef<() => Promise<void>>(async () => {});
   const handleStartRef = useRef<() => Promise<void>>(async () => {});
   const activeRef = useRef(false);
+
+  useEffect(() => {
+    if (!assignmentId) return;
+    fetchAssignmentPrescription(assignmentId)
+      .then(setPrescription)
+      .catch((err) => console.warn('Failed to load prescription', err));
+  }, [assignmentId]);
 
   const speak = (text: string) => {
     if ('speechSynthesis' in window) {
@@ -569,6 +579,15 @@ const TrackerSkeleton: React.FC = () => {
         status: liveStatus,
         exercise_id: exerciseId,
         assignment_id: assignmentId,
+        capture_config_snapshot: prescription?.capture_guidance || prescription?.capture_config,
+        environment: environmentSelection
+          ? {
+              declared_components: environmentSelection.declared_components,
+              noise_level: environmentSelection.noise_level,
+              mirror_present: environmentSelection.mirror_present,
+              other_users_present: environmentSelection.other_users_present,
+            }
+          : undefined,
         metrics_summary: {
           repetitions: reps,
           final_score: score,
@@ -620,15 +639,9 @@ const TrackerSkeleton: React.FC = () => {
 
   const handleCameraReady = (ready: boolean) => {
     setCameraReady(ready);
-    if (ready) {
-      if (step === 'permission') {
-        setStep('ready');
-      }
-    } else {
-      if (step === 'permission' || step === 'ready') {
-        setErrorType('permission_denied');
-        setStep('error');
-      }
+    if (!ready && (step === 'permission' || step === 'ready' || step === 'environment')) {
+      setErrorType('permission_denied');
+      setStep('error');
     }
   };
 
@@ -748,7 +761,7 @@ const TrackerSkeleton: React.FC = () => {
               className="flex-1 font-bold py-3 text-xs btn-primary shadow-lg"
               onClick={() => {
                 setCameraReady(true);
-                setStep('ready');
+                setStep('environment');
               }}
             >
               Allow Camera
@@ -1410,6 +1423,19 @@ const TrackerSkeleton: React.FC = () => {
       return renderConsent();
     case 'permission':
       return renderPermission();
+    case 'environment':
+      return (
+        <EnvironmentChecklist
+          exerciseName={exerciseName}
+          requirements={prescription?.environment_requirements}
+          captureGuidance={prescription?.capture_guidance}
+          onContinue={(sel) => {
+            setEnvironmentSelection(sel);
+            setStep('ready');
+          }}
+          onBack={() => setStep('permission')}
+        />
+      );
     case 'ready':
       return renderReady();
     case 'countdown':

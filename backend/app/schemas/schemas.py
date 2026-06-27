@@ -415,6 +415,7 @@ class PatientDetailFullResponse(BaseModel):
 
 class SessionDetailResponse(SessionResponse):
     telemetry_data: List[MotionFrameResponse] = []
+    environment_context: Dict[str, Any] = {}
 
     class Config:
         from_attributes = True
@@ -465,6 +466,8 @@ class PrescriptionResponse(BaseModel):
     config: Dict[str, Any] = {}
     guide: Dict[str, Any] = {}
     limitations: List[Dict[str, Any]] = []
+    environment_requirements: List[Dict[str, Any]] = []
+    capture_guidance: Dict[str, Any] = {}
 
 class PatientLimitationCreate(BaseModel):
     scope_type: str
@@ -550,3 +553,71 @@ class SessionFrameAnnotationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ExerciseEnvironmentRequirementCreate(BaseModel):
+    component_id: int
+    required: bool = True
+    config: Optional[Dict[str, Any]] = None
+
+
+class ExerciseEnvironmentRequirementResponse(BaseModel):
+    id: int
+    exercise_id: int
+    component_id: int
+    slug: Optional[str] = None
+    name: Optional[str] = None
+    category: Optional[str] = None
+    required: bool
+    affects_tracking: Optional[bool] = None
+    setup_instructions: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WeeklyMetricPoint(BaseModel):
+    label: str
+    avg_rom: float = 0
+    session_count: int = 0
+
+
+class AlignmentScorePoint(BaseModel):
+    label: str
+    score: float = 0
+    session_count: int = 0
+    avg_rom: Optional[float] = None
+
+
+class ClinicAnalyticsResponse(BaseModel):
+    rom_progress: List[WeeklyMetricPoint] = []
+    alignment_scores: List[AlignmentScorePoint] = []
+    total_sessions: int = 0
+    average_session_score: float = 0
+    active_patients: int = 0
+
+
+class PatientAnalyticsResponse(BaseModel):
+    patient_id: str
+    rom_progress: List[WeeklyMetricPoint] = []
+    alignment_scores: List[AlignmentScorePoint] = []
+    total_sessions: int = 0
+    recent_sessions: List[Dict[str, Any]] = []
+
+
+class ProgressReportResponse(BaseModel):
+    id: int
+    patient_id: str
+    report_date: date
+    summary: str
+    metrics: Optional[Dict[str, Any]] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BackfillRecordsResponse(BaseModel):
+    sessions_processed: int
+    records_updated: int

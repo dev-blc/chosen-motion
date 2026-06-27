@@ -470,6 +470,64 @@ export async function deleteFrameAnnotation(sessionId: number, annotationId: num
   });
 }
 
+export async function fetchClinicAnalytics() {
+  return request('/admin/analytics/clinic');
+}
+
+export async function fetchPatientAnalytics(patientId: string) {
+  return request(`/admin/analytics/patient/${patientId}`);
+}
+
+export async function createProgressReport(patientId: string) {
+  return request(`/admin/patients/${patientId}/progress-reports`, { method: 'POST' });
+}
+
+export async function fetchPatientProgressReports(patientId: string) {
+  return request(`/admin/patients/${patientId}/progress-reports`);
+}
+
+export async function fetchMyProgressReports() {
+  return request('/patients/progress-reports');
+}
+
+export async function backfillExerciseRecords(patientId?: string) {
+  const qs = patientId ? `?patient_id=${encodeURIComponent(patientId)}` : '';
+  return request(`/admin/records/backfill${qs}`, { method: 'POST' });
+}
+
+export async function createEnvironmentComponent(data: {
+  name: string;
+  slug: string;
+  category: string;
+  setup_instructions?: string;
+  affects_tracking?: boolean;
+}) {
+  return request('/admin/environment-components', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchExerciseEnvironmentRequirements(exerciseId: number) {
+  return request(`/admin/exercises/${exerciseId}/environment-requirements`);
+}
+
+export async function addExerciseEnvironmentRequirement(
+  exerciseId: number,
+  data: { component_id: number; required?: boolean; config?: Record<string, unknown> }
+) {
+  return request(`/admin/exercises/${exerciseId}/environment-requirements`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function removeExerciseEnvironmentRequirement(exerciseId: number, requirementId: number) {
+  return request(`/admin/exercises/${exerciseId}/environment-requirements/${requirementId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function endSquatSession(sessionId: number) {
   return request('/exercise/squat/end', {
     method: 'POST',

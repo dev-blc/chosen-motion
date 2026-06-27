@@ -84,6 +84,7 @@ export interface Prescription {
   target_rom?: number | null;
   target_joints?: Record<string, unknown> | null;
   capture_config?: Record<string, unknown> | null;
+  capture_guidance?: Record<string, unknown> | null;
   rules: ExerciseRule[];
   config: AssignmentConfig;
   guide: {
@@ -96,6 +97,14 @@ export interface Prescription {
     required_equipment?: string;
   };
   limitations: Array<Record<string, unknown>>;
+  environment_requirements?: Array<{
+    slug: string;
+    name: string;
+    category?: string;
+    required?: boolean;
+    affects_tracking?: boolean;
+    setup_instructions?: string;
+  }>;
 }
 
 export interface PatientExerciseRecord {

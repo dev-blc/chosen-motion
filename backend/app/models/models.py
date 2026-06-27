@@ -223,6 +223,20 @@ class MotionSession(Base):
     def telemetry_data(self) -> list:
         return self.frames
 
+    @property
+    def environment_context(self) -> dict:
+        env = self.session_environment
+        if not env:
+            return {}
+        declared = env.declared_components or {}
+        return {
+            "declared_components": declared.get("components", []),
+            "noise_level": env.noise_level,
+            "mirror_present": env.mirror_present,
+            "other_users_present": env.other_users_present,
+            "environment_score": env.environment_score,
+        }
+
 
 class MotionMetric(Base):
     __tablename__ = "motion_metrics"

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { fetchMySessions, fetchPatientProfile, fetchMyAssignments, fetchMyRecords } from '@/services/api';
-import type { ExerciseAssignment, MotionSession, PatientExerciseRecord } from '@/types/api';
+import { fetchMySessions, fetchPatientProfile, fetchMyAssignments, fetchMyRecords, fetchAssignmentPrescription } from '@/services/api';
+import type { ExerciseAssignment, MotionSession, PatientExerciseRecord, Prescription } from '@/types/api';
+import { metadataFromPrescription, guideFromPrescription } from '@/features/patient/utils/prescriptionHelpers';
 import { 
   Play, 
   Activity, 
@@ -135,7 +136,18 @@ const PatientDashboard: React.FC = () => {
   const [mistakesOpen, setMistakesOpen] = useState(false);
   const [musclesOpen, setMusclesOpen] = useState(false);
   const [exerciseRecords, setExerciseRecords] = useState<Record<number, PatientExerciseRecord>>({});
+  const [detailPrescription, setDetailPrescription] = useState<Prescription | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!selectedAssignment?.id) {
+      setDetailPrescription(null);
+      return;
+    }
+    fetchAssignmentPrescription(selectedAssignment.id)
+      .then(setDetailPrescription)
+      .catch(() => setDetailPrescription(null));
+  }, [selectedAssignment?.id]);
 
   const startTracker = (assignment?: ExerciseAssignment | null) => {
     if (!assignment?.exercise) {
@@ -351,166 +363,6 @@ const PatientDashboard: React.FC = () => {
   };
 
   const currentStreak = calculateStreak();
-
-  const getExerciseMetadata = (name: string) => {
-    const lowercaseName = name.toLowerCase();
-    if (lowercaseName.includes('hinge')) {
-      return {
-        sets: 3,
-        reps: 12,
-        rest: '45s',
-        difficulty: 'Medium',
-        duration: '8 mins',
-        bodyPart: 'Hips & Lower Back',
-        category: 'Hip Mobility'
-      };
-    } else if (lowercaseName.includes('clamshell')) {
-      return {
-        sets: 3,
-        reps: 15,
-        rest: '45s',
-        difficulty: 'Light',
-        duration: '6 mins',
-        bodyPart: 'Outer Hips & Glutes',
-        category: 'Glute Activation'
-      };
-    } else if (lowercaseName.includes('glute') || lowercaseName.includes('bridge')) {
-      return {
-        sets: 3,
-        reps: 12,
-        rest: '30s',
-        difficulty: 'Light',
-        duration: '5 mins',
-        bodyPart: 'Gluteus Maximus',
-        category: 'Strength'
-      };
-    }
-    return {
-      sets: 3,
-      reps: 10,
-      rest: '30s',
-      difficulty: 'Light',
-      duration: '5 mins',
-      bodyPart: 'Lower Body',
-      category: 'Rehabilitation'
-    };
-  };
-
-  const getExerciseGuideDetails = (name: string) => {
-    const lowercaseName = name.toLowerCase();
-    if (lowercaseName.includes('hinge')) {
-      return {
-        description: "The bodyweight hip hinge is a fundamental rehabilitation movement designed to strengthen the posterior chain (glutes, hamstrings, and lower back) while teaching proper movement mechanics for lifting. It focuses on movement at the hip joint rather than bending the knees, promoting lumbo-pelvic stability.",
-        instructions: [
-          "Stand with your feet hip-width apart, knees slightly unlocked (soft knees), and arms relaxed at your sides or resting on your hips.",
-          "Engage your core and maintain a neutral spine as you pull your shoulders back and down.",
-          "Begin the movement by pushing your hips straight back as if trying to touch a wall behind you with your glutes.",
-          "Lower your torso toward the floor, keeping your back completely flat and shins vertical. Feel the stretch in your hamstrings.",
-          "Stop lowering once your torso is roughly parallel to the ground or when you feel your hamstrings fully stretched without rounding your back.",
-          "Squeeze your glutes and hamstrings to reverse the motion, driving your hips forward and returning to a tall standing posture."
-        ],
-        preparationTips: [
-          "Keep your weight centered in your heels and mid-foot.",
-          "Use a mirror or keep one hand on your lower back to ensure your spine remains flat.",
-          "Keep your neck aligned; look down at the floor at the bottom of the movement."
-        ],
-        commonMistakes: [
-          "Rounding the spine or lower back, which puts excessive strain on lumbar discs.",
-          "Bending the knees too much, converting the hinge into a standard squat.",
-          "Shifting weight forward onto your toes, which lifts the heels and reduces glute loading."
-        ],
-        safetyNotes: [
-          "Always keep your core active to support your back.",
-          "Do not extend beyond neutral posture at the top of the lift.",
-          "If you feel pinching or strain in the lumbar spine, reduce the range of motion."
-        ],
-        targetMuscles: ["Gluteus Maximus", "Hamstrings", "Erector Spinae", "Core Stabilizers"],
-        requiredEquipment: "None (Bodyweight)"
-      };
-    } else if (lowercaseName.includes('clamshell')) {
-      return {
-        description: "The clamshell exercise is a premier mobility and strength movement targeting the hip abductor group, specifically the gluteus medius. Strengthening this muscle helps stabilize the pelvis, prevents knee valgus (collapsing inwards), and reduces lower body injury risk during weight-bearing activities.",
-        instructions: [
-          "Lie on your side on a comfortable mat. Stack your hips, knees, and ankles cleanly.",
-          "Bend your knees to approximately 90 degrees and pull your thighs forward to a 45-degree angle with your torso.",
-          "Rest your head on your bottom arm and place your top hand on your hip to monitor pelvic rotation.",
-          "Keeping your heels pressed firmly together, slowly raise your top knee as high as possible without rotating your hip or pelvis.",
-          "Pause for 1-2 seconds at the peak of the movement, squeezing your outer glute.",
-          "Slowly lower the knee back to the starting position under full control."
-        ],
-        preparationTips: [
-          "Make sure your hips are stacked directly on top of each other, vertical to the floor.",
-          "Slightly tuck your tailbone and draw in your belly button to stabilize the pelvis.",
-          "Perform each rep slowly to focus on quality muscle activation."
-        ],
-        commonMistakes: [
-          "Rotating the upper hip and torso backward to cheat the range of motion.",
-          "Allowing the heels to separate during knee abduction.",
-          "Using momentum or rapid movements rather than controlled abductor contraction."
-        ],
-        safetyNotes: [
-          "Do not roll your hips back; if you find yourself rolling, reduce the height of the lift.",
-          "Ensure your neck is supported to avoid cervical muscle strain."
-        ],
-        targetMuscles: ["Gluteus Medius", "Tensor Fasciae Latae", "Hip External Rotators"],
-        requiredEquipment: "Resistance Loop Band (optional)"
-      };
-    } else if (lowercaseName.includes('glute') || lowercaseName.includes('bridge')) {
-      return {
-        description: "The glute bridge is a foundational therapeutic exercise that builds strength in the hips, glutes, and hamstrings, while improving core and spine stability. It is highly effective for reducing lower back pain and improving athletic mechanics.",
-        instructions: [
-          "Lie flat on your back on a mat, with knees bent and feet flat on the floor, hip-width apart.",
-          "Place your arms along your sides, palms flat on the floor for stability.",
-          "Contract your core and perform a slight pelvic tilt to press your lower back into the mat.",
-          "Drive through your heels to lift your hips toward the ceiling, creating a straight line from knees to hips and shoulders.",
-          "Squeeze your glutes tightly at the top and hold the bridge posture for 2 seconds.",
-          "Lower your hips slowly back to the starting position on the mat."
-        ],
-        preparationTips: [
-          "Verify that your feet are close enough to your glutes that you can touch your heels with your fingertips.",
-          "Keep your knees aligned with your toes; do not let them bow out or collapse inward.",
-          "Exhale as you raise your hips, and inhale as you lower them."
-        ],
-        commonMistakes: [
-          "Arching the lower back excessively at the top of the bridge instead of extending at the hips.",
-          "Pushing off the toes rather than the heels, which shifts loading to the quadriceps.",
-          "Lifting the hips too fast and hyperextending the spine."
-        ],
-        safetyNotes: [
-          "The lift should come entirely from your glutes and hamstrings, not your lower back.",
-          "If you experience cramping in your hamstrings, move your feet slightly closer to your hips."
-        ],
-        targetMuscles: ["Gluteus Maximus", "Hamstrings", "Rectus Abdominis", "Erector Spinae"],
-        requiredEquipment: "Yoga Mat"
-      };
-    }
-    return {
-      description: "This targeted physical therapy exercise is prescribed to aid your muscle activation, joint mobility, and functional movement patterns. Perform with precision and care under active camera tracking guidance.",
-      instructions: [
-        "Align your body in the starting posture described by your therapist.",
-        "Perform the motion slowly, focusing on muscle control and moving through your complete pain-free range of motion.",
-        "Hold the contraction at the peak for 1-2 seconds.",
-        "Return slowly to the starting position under full control.",
-        "Repeat for the assigned number of sets and repetitions, resting between sets."
-      ],
-      preparationTips: [
-        "Set up in a well-lit space with the camera positioned to capture your full body.",
-        "Warm up with light movements before starting.",
-        "Stay hydrated and concentrate on proper form."
-      ],
-      commonMistakes: [
-        "Moving too fast and utilizing inertia instead of muscle activation.",
-        "Holding your breath during the execution.",
-        "Compromising posture to achieve a larger range of motion."
-      ],
-      safetyNotes: [
-        "Do not push through sharp or sudden pain.",
-        "Maintain controlled stability throughout the exercises."
-      ],
-      targetMuscles: ["Rehabilitation Targeted Muscle Groups"],
-      requiredEquipment: "None (Bodyweight)"
-    };
-  };
 
   const getDaysOfWeek = (refDate: Date) => {
     const days = [];
@@ -1899,7 +1751,11 @@ const PatientDashboard: React.FC = () => {
           {assignmentsForDay.map((assignment) => {
             const ex = assignment.exercise;
             if (!ex) return null;
-            const meta = getExerciseMetadata(ex.name);
+            const meta = metadataFromPrescription(
+              assignment.config
+                ? ({ config: assignment.config } as Prescription)
+                : null
+            );
             return (
               <div 
                 key={assignment.id} 
@@ -2012,8 +1868,11 @@ const PatientDashboard: React.FC = () => {
       </div>
     );
 
-    const meta = getExerciseMetadata(ex.name);
-    const guide = getExerciseGuideDetails(ex.name);
+    const meta = metadataFromPrescription(
+      detailPrescription ||
+        (assignment.config ? ({ config: assignment.config } as Prescription) : null)
+    );
+    const guide = guideFromPrescription(detailPrescription);
 
     const sessionsForExercise = sessions.filter(s => 
       s.exercise_id === ex.id || 

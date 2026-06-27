@@ -117,6 +117,29 @@ export const PositionAnalysis: React.FC<PositionAnalysisProps> = ({
           </div>
         </div>
       </div>
+      <div>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-chosen-text-muted mb-3">
+          Bar / DB Path (Wrist Proxy)
+        </h4>
+        {jointMetrics.implement_path ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-chosen-surface border border-chosen rounded-chosen-md">
+              <span className="text-2xs text-chosen-text-muted block">Implement Type</span>
+              <span className="text-sm font-bold text-gold-500 capitalize">
+                {(jointMetrics.implement_path as { implement_type?: string }).implement_type?.replace(/_/g, ' ') || '—'}
+              </span>
+            </div>
+            <div className="p-3 bg-chosen-surface border border-chosen rounded-chosen-md">
+              <span className="text-2xs text-chosen-text-muted block">Peak Height Delta</span>
+              <span className="text-sm font-bold text-chosen-text-primary">
+                {(jointMetrics.implement_path as { peak_height_delta?: number }).peak_height_delta ?? 0}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-chosen-text-muted">No implement path data for this session.</p>
+        )}
+      </div>
     </div>
   );
 };

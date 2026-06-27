@@ -312,6 +312,55 @@ def _semantic_joint_metrics(frames: List[Dict[str, Any]]) -> Dict[str, Any]:
         "knee_valgus": summarize(knee_valgus, "ratio"),
         "foot_width_ratio": summarize(foot_widths, "ratio"),
         "hand_height": summarize(hand_heights, "ratio"),
+        "implement_path": _implement_path_metrics(frames),
+    }
+
+
+def _implement_path_metrics(frames: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Wrist-proxy bar/dumbbell path tracking from vertical wrist displacement."""
+    wrist_heights_l: List[float] = []
+    wrist_heights_r: List[float] = []
+    wrist_spread: List[float] = []
+
+    for frame in frames:
+        jc = frame.get("joint_coordinates") or {}
+        w_l, w_r = jc.get("wrist_l"), jc.get("wrist_r")
+        h_l, h_r = jc.get("hip_l"), jc.get("hip_r")
+        s_l, s_r = jc.get("shoulder_l"), jc.get("shoulder_r")
+
+        if w_l and h_l:
+            wrist_heights_l.append(h_l[1] - w_l[1])
+        if w_r and h_r:
+            wrist_heights_r.append(h_r[1] - w_r[1])
+        if w_l and w_r:
+            wrist_spread.append(abs(w_l[0] - w_r[0]))
+
+    def summarize_vals(vals: List[float]) -> Dict[str, float]:
+        if not vals:
+            return {"avg": 0, "min": 0, "max": 0, "variance": 0}
+        mean = sum(vals) / len(vals)
+        variance = sum((v - mean) ** 2 for v in vals) / len(vals) if len(vals) > 1 else 0
+        return {
+            "avg": round(mean, 3),
+            "min": round(min(vals), 3),
+            "max": round(max(vals), 3),
+            "variance": round(variance, 4),
+        }
+
+    left = summarize_vals(wrist_heights_l)
+    right = summarize_vals(wrist_heights_r)
+    spread = summarize_vals(wrist_spread)
+
+    implement_type = "bar_proxy"
+    if spread["avg"] > 0.25:
+        implement_type = "dumbbell_proxy"
+
+    return {
+        "implement_type": implement_type,
+        "wrist_path_left": left,
+        "wrist_path_right": right,
+        "grip_width_ratio": spread,
+        "peak_height_delta": round(max(left["max"], right["max"]) - min(left["min"], right["min"]), 3),
     }
 
 

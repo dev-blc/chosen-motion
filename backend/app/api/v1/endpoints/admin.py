@@ -7,7 +7,7 @@ from typing import List, Optional
 from app.core.database import get_db
 from app.core.security import require_admin, UserPayload
 from app.core.config import settings
-from app.models.models import Patient, MotionSession as DbSession, User, Consent, ExerciseAssignment, Exercise, ExerciseRule, PatientLimitation, EnvironmentComponent, SessionFrameAnnotation
+from app.models.models import Patient, MotionSession as DbSession, User, Consent, ExerciseAssignment, Exercise, ExerciseRule, PatientLimitation, EnvironmentComponent, SessionFrameAnnotation, ExerciseEnvironmentRequirement, ProgressReport
 from app.api.v1.endpoints.auth import generate_patient_id, get_supabase_auth_url
 from app.services.query_helpers import session_load_options, assignment_load_options
 from app.schemas.schemas import (
@@ -36,6 +36,12 @@ from app.schemas.schemas import (
     SessionFrameAnnotationCreate,
     SessionFrameAnnotationUpdate,
     SessionFrameAnnotationResponse,
+    ExerciseEnvironmentRequirementCreate,
+    ExerciseEnvironmentRequirementResponse,
+    ClinicAnalyticsResponse,
+    PatientAnalyticsResponse,
+    ProgressReportResponse,
+    BackfillRecordsResponse,
 )
 
 router = APIRouter()
@@ -903,7 +909,144 @@ def list_environment_components(
     current_user: UserPayload = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    from app.services.environment_service import ensure_default_components
+    ensure_default_components(db)
+    db.commit()
     return db.query(EnvironmentComponent).order_by(EnvironmentComponent.name).all()
+
+
+@router.get("/exercises/{exercise_id}/environment-requirements", response_model=List[ExerciseEnvironmentRequirementResponse])
+def list_exercise_environment_requirements(
+    exercise_id: int,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.environment_service import get_exercise_environment_requirements
+    return get_exercise_environment_requirements(db, exercise_id)
+
+
+@router.post("/exercises/{exercise_id}/environment-requirements", response_model=ExerciseEnvironmentRequirementResponse, status_code=status.HTTP_201_CREATED)
+def add_exercise_environment_requirement(
+    exercise_id: int,
+    data: ExerciseEnvironmentRequirementCreate,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    exercise = db.query(Exercise).filter(Exercise.id == exercise_id).first()
+    if not exercise:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found.")
+    component = db.query(EnvironmentComponent).filter(EnvironmentComponent.id == data.component_id).first()
+    if not component:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Environment component not found.")
+    existing = db.query(ExerciseEnvironmentRequirement).filter(
+        ExerciseEnvironmentRequirement.exercise_id == exercise_id,
+        ExerciseEnvironmentRequirement.component_id == data.component_id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Requirement already exists.")
+    req = ExerciseEnvironmentRequirement(
+        exercise_id=exercise_id,
+        component_id=data.component_id,
+        required=data.required,
+        config=data.config,
+    )
+    db.add(req)
+    db.commit()
+    from app.services.environment_service import get_exercise_environment_requirements
+    rows = get_exercise_environment_requirements(db, exercise_id)
+    match = next((r for r in rows if r["component_id"] == data.component_id), None)
+    return match or req
+
+
+@router.delete("/exercises/{exercise_id}/environment-requirements/{requirement_id}", response_model=MessageResponse)
+def remove_exercise_environment_requirement(
+    exercise_id: int,
+    requirement_id: int,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    req = db.query(ExerciseEnvironmentRequirement).filter(
+        ExerciseEnvironmentRequirement.id == requirement_id,
+        ExerciseEnvironmentRequirement.exercise_id == exercise_id,
+    ).first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement not found.")
+    db.delete(req)
+    db.commit()
+    return MessageResponse(message="Environment requirement removed.")
+
+
+@router.get("/analytics/clinic", response_model=ClinicAnalyticsResponse)
+def get_clinic_analytics(
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.analytics_service import get_clinic_analytics
+    return get_clinic_analytics(db)
+
+
+@router.get("/analytics/patient/{patient_id}", response_model=PatientAnalyticsResponse)
+def get_patient_analytics(
+    patient_id: str,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found.")
+    from app.services.analytics_service import get_patient_analytics
+    return get_patient_analytics(db, patient.patient_id)
+
+
+@router.post("/patients/{patient_id}/progress-reports", response_model=ProgressReportResponse, status_code=status.HTTP_201_CREATED)
+def create_progress_report(
+    patient_id: str,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found.")
+    from app.services.progress_report_service import generate_patient_progress_report
+    report = generate_patient_progress_report(db, patient.patient_id)
+    db.commit()
+    db.refresh(report)
+    return report
+
+
+@router.get("/patients/{patient_id}/progress-reports", response_model=List[ProgressReportResponse])
+def list_progress_reports(
+    patient_id: str,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    patient = find_patient_robust(patient_id, db)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found.")
+    return (
+        db.query(ProgressReport)
+        .filter(ProgressReport.patient_id == patient.patient_id)
+        .order_by(ProgressReport.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+
+@router.post("/records/backfill", response_model=BackfillRecordsResponse)
+def backfill_exercise_records(
+    patient_id: Optional[str] = None,
+    current_user: UserPayload = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    from app.services.backfill_service import backfill_patient_records
+    if patient_id:
+        patient = find_patient_robust(patient_id, db)
+        if not patient:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found.")
+        patient_id = patient.patient_id
+    result = backfill_patient_records(db, patient_id)
+    db.commit()
+    return result
 
 
 @router.post("/environment-components", response_model=EnvironmentComponentResponse, status_code=status.HTTP_201_CREATED)

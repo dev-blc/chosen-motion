@@ -4,10 +4,11 @@ from app.models.models import MotionSession, ExerciseAssignment
 
 
 def session_load_options():
-    """Eager-load exercise and metrics so session computed fields serialize correctly."""
+    """Eager-load exercise, metrics, and environment for session serialization."""
     return (
         joinedload(MotionSession.exercise),
         selectinload(MotionSession.metrics),
+        joinedload(MotionSession.session_environment),
     )
 
 

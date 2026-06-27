@@ -13,6 +13,7 @@ from app.models.models import (
     MotionFrame,
     SessionEnvironment,
     PatientExerciseRecord,
+    ProgressReport,
 )
 from app.services.query_helpers import session_load_options, assignment_load_options
 from app.services.patient_resolver import get_patient_for_user, resolve_patient_for_user
@@ -28,6 +29,7 @@ from app.schemas.schemas import (
     ExerciseAssignmentResponse,
     PrescriptionResponse,
     PatientExerciseRecordResponse,
+    ProgressReportResponse,
 )
 
 router = APIRouter()
@@ -218,14 +220,15 @@ def upload_motion_session(
     db.add(db_metric)
 
     if session_data.environment:
-        env = SessionEnvironment(
-            session_id=db_session.id,
-            declared_components={"components": session_data.environment.declared_components or []},
+        from app.services.environment_service import build_session_environment
+        build_session_environment(
+            db,
+            db_session,
+            declared_components=session_data.environment.declared_components,
             noise_level=session_data.environment.noise_level,
             mirror_present=session_data.environment.mirror_present,
             other_users_present=session_data.environment.other_users_present,
         )
-        db.add(env)
 
     if assignment:
         assignment.is_completed = True
@@ -341,6 +344,21 @@ def get_exercise_record(
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No records for this exercise yet.")
     return record
+
+
+@router.get("/progress-reports", response_model=List[ProgressReportResponse])
+def list_my_progress_reports(
+    current_user: UserPayload = Depends(require_patient),
+    db: Session = Depends(get_db),
+):
+    patient = get_patient_for_user(current_user, db)
+    return (
+        db.query(ProgressReport)
+        .filter(ProgressReport.patient_id == patient.patient_id)
+        .order_by(ProgressReport.created_at.desc())
+        .limit(10)
+        .all()
+    )
 
 
 @router.get("/{patient_id}", response_model=PatientResponse)

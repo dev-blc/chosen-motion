@@ -54,6 +54,7 @@ def build_prescription(db: Session, assignment_id: int) -> Dict[str, Any]:
 
     exercise = assignment.exercise
     limitations = get_active_limitations(db, assignment.patient_id, exercise.id)
+    env_requirements = get_exercise_environment_requirements(db, exercise.id)
 
     merged_rules = []
     for rule in exercise.rules or []:
@@ -105,4 +106,11 @@ def build_prescription(db: Session, assignment_id: int) -> Dict[str, Any]:
             }
             for lim in limitations
         ],
+        "environment_requirements": env_requirements,
+        "capture_guidance": exercise.capture_config or {},
     }
+
+
+def get_exercise_environment_requirements(db: Session, exercise_id: int) -> list:
+    from app.services.environment_service import get_exercise_environment_requirements as _get
+    return _get(db, exercise_id)
