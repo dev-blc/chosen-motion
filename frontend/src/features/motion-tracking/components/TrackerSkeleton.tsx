@@ -29,12 +29,15 @@ const TrackerSkeleton: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const exerciseName = location.state?.exerciseName || 'Shoulder Abduction';
+  const assignmentId = location.state?.assignmentId as number | undefined;
+  const exerciseId = location.state?.exerciseId as number | undefined;
   
   const [active, setActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [step, setStep] = useState<'consent' | 'permission' | 'ready' | 'countdown' | 'recording' | 'processing' | 'success' | 'error'>('consent');
   const [errorType, setErrorType] = useState<'camera_unavailable' | 'permission_denied' | 'detection_failed' | 'upload_failed' | 'network_lost' | 'timeout' | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [isNewPersonalBest, setIsNewPersonalBest] = useState(false);
   const [uploadedSessionId, setUploadedSessionId] = useState<number | null>(null);
   
   const [gestureStatus, setGestureStatus] = useState<'waiting' | 'holding' | 'countdown' | 'active'>('waiting');
@@ -564,6 +567,8 @@ const TrackerSkeleton: React.FC = () => {
         speed: avgSpeed,
         symmetry: 1.0,
         status: liveStatus,
+        exercise_id: exerciseId,
+        assignment_id: assignmentId,
         metrics_summary: {
           repetitions: reps,
           final_score: score,
@@ -573,6 +578,9 @@ const TrackerSkeleton: React.FC = () => {
       });
       if (res && (res.id || res.session_id)) {
         setUploadedSessionId(res.id || res.session_id);
+      }
+      if (res?.is_new_personal_best) {
+        setIsNewPersonalBest(true);
       }
       setStep('success');
     } catch (err) {
@@ -1271,6 +1279,9 @@ const TrackerSkeleton: React.FC = () => {
 
           <div className="space-y-2">
             <h2 className="text-2xl font-display font-bold text-white">Workout Logged Successfully!</h2>
+            {isNewPersonalBest && (
+              <p className="text-sm font-bold text-emerald-400">New Personal Best!</p>
+            )}
             <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
               Your structural telemetry report has been processed and synced with the clinical dashboard. Your provider has been notified.
             </p>

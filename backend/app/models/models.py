@@ -68,6 +68,8 @@ class Patient(Base):
     sessions: Mapped[List["MotionSession"]] = relationship("MotionSession", back_populates="patient", cascade="all, delete-orphan", primaryjoin="Patient.patient_id == MotionSession.patient_id")
     motion_frames: Mapped[List["MotionFrame"]] = relationship("MotionFrame", back_populates="patient", cascade="all, delete-orphan", primaryjoin="Patient.patient_id == MotionFrame.patient_id")
     progress_reports: Mapped[List["ProgressReport"]] = relationship("ProgressReport", back_populates="patient", cascade="all, delete-orphan", primaryjoin="Patient.patient_id == ProgressReport.patient_id")
+    limitations: Mapped[List["PatientLimitation"]] = relationship("PatientLimitation", back_populates="patient", cascade="all, delete-orphan", primaryjoin="Patient.patient_id == PatientLimitation.patient_id")
+    exercise_records: Mapped[List["PatientExerciseRecord"]] = relationship("PatientExerciseRecord", back_populates="patient", cascade="all, delete-orphan", primaryjoin="Patient.patient_id == PatientExerciseRecord.patient_id")
 
 
 class Consent(Base):
@@ -92,6 +94,9 @@ class Exercise(Base):
     target_rom: Mapped[Optional[float]] = mapped_column(Float)
     thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500))
     target_joints: Mapped[Optional[dict]] = mapped_column(JSON) # JSONB matching list of tracked points
+    capture_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    metric_definitions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    guide_content: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
@@ -103,6 +108,9 @@ class Exercise(Base):
         cascade="all, delete-orphan",
         lazy="selectin"
     )
+    muscle_groups: Mapped[List["ExerciseMuscleGroup"]] = relationship("ExerciseMuscleGroup", back_populates="exercise", cascade="all, delete-orphan")
+    environment_requirements: Mapped[List["ExerciseEnvironmentRequirement"]] = relationship("ExerciseEnvironmentRequirement", back_populates="exercise", cascade="all, delete-orphan")
+    exercise_records: Mapped[List["PatientExerciseRecord"]] = relationship("PatientExerciseRecord", back_populates="exercise")
 
 
 class ExerciseAssignment(Base):
@@ -115,10 +123,12 @@ class ExerciseAssignment(Base):
     assigned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     due_date: Mapped[Optional[date]] = mapped_column(Date)
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relationships
     patient: Mapped["Patient"] = relationship("Patient", back_populates="assignments", primaryjoin="ExerciseAssignment.patient_id == Patient.patient_id")
     exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="assignments")
+    sessions: Mapped[List["MotionSession"]] = relationship("MotionSession", back_populates="assignment")
 
 
 class MotionSession(Base):
@@ -127,6 +137,8 @@ class MotionSession(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     patient_id: Mapped[str] = mapped_column(String(50), ForeignKey("patients.patient_id", ondelete="CASCADE"), nullable=False)
     exercise_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("exercises.id", ondelete="SET NULL"))
+    assignment_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("exercise_assignments.id", ondelete="SET NULL"), nullable=True)
+    capture_config_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     completed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
@@ -136,8 +148,10 @@ class MotionSession(Base):
     # Relationships
     patient: Mapped["Patient"] = relationship("Patient", back_populates="sessions", primaryjoin="MotionSession.patient_id == Patient.patient_id")
     exercise: Mapped[Optional["Exercise"]] = relationship("Exercise", back_populates="sessions")
+    assignment: Mapped[Optional["ExerciseAssignment"]] = relationship("ExerciseAssignment", back_populates="sessions")
     metrics: Mapped[List["MotionMetric"]] = relationship("MotionSession" if False else "MotionMetric", back_populates="session", cascade="all, delete-orphan")
     frames: Mapped[List["MotionFrame"]] = relationship("MotionFrame", back_populates="session", cascade="all, delete-orphan")
+    session_environment: Mapped[Optional["SessionEnvironment"]] = relationship("SessionEnvironment", back_populates="session", uselist=False, cascade="all, delete-orphan")
 
     @property
     def title(self) -> str:
@@ -213,6 +227,9 @@ class MotionMetric(Base):
     accuracy_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     detected_errors: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     max_rom: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    joint_metrics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    pace: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    rotation: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relationships
     session: Mapped["MotionSession"] = relationship("MotionSession", back_populates="metrics")
@@ -271,6 +288,108 @@ class MotionFrame(Base):
         primaryjoin="MotionFrame.patient_id == Patient.patient_id"
     )
     session: Mapped["MotionSession"] = relationship("MotionSession", back_populates="frames")
+
+
+class MuscleGroup(Base):
+    __tablename__ = "muscle_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    body_region: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    exercises: Mapped[List["ExerciseMuscleGroup"]] = relationship("ExerciseMuscleGroup", back_populates="muscle_group", cascade="all, delete-orphan")
+
+
+class ExerciseMuscleGroup(Base):
+    __tablename__ = "exercise_muscle_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    exercise_id: Mapped[int] = mapped_column(Integer, ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False)
+    muscle_group_id: Mapped[int] = mapped_column(Integer, ForeignKey("muscle_groups.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default="primary", nullable=False)
+
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="muscle_groups")
+    muscle_group: Mapped["MuscleGroup"] = relationship("MuscleGroup", back_populates="exercises")
+
+
+class PatientLimitation(Base):
+    __tablename__ = "patient_limitations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[str] = mapped_column(String(50), ForeignKey("patients.patient_id", ondelete="CASCADE"), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    scope_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    limitation_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    parameters: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    notes: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="limitations", primaryjoin="PatientLimitation.patient_id == Patient.patient_id")
+
+
+class EnvironmentComponent(Base):
+    __tablename__ = "environment_components"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    icon_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    setup_instructions: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    affects_tracking: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    exercise_requirements: Mapped[List["ExerciseEnvironmentRequirement"]] = relationship("ExerciseEnvironmentRequirement", back_populates="component", cascade="all, delete-orphan")
+
+
+class ExerciseEnvironmentRequirement(Base):
+    __tablename__ = "exercise_environment_requirements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    exercise_id: Mapped[int] = mapped_column(Integer, ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False)
+    component_id: Mapped[int] = mapped_column(Integer, ForeignKey("environment_components.id", ondelete="CASCADE"), nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="environment_requirements")
+    component: Mapped["EnvironmentComponent"] = relationship("EnvironmentComponent", back_populates="exercise_requirements")
+
+
+class SessionEnvironment(Base):
+    __tablename__ = "session_environments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("motion_sessions.id", ondelete="CASCADE"), unique=True, nullable=False)
+    declared_components: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    noise_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    mirror_present: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    other_users_present: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    environment_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    session: Mapped["MotionSession"] = relationship("MotionSession", back_populates="session_environment")
+
+
+class PatientExerciseRecord(Base):
+    __tablename__ = "patient_exercise_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[str] = mapped_column(String(50), ForeignKey("patients.patient_id", ondelete="CASCADE"), nullable=False)
+    exercise_id: Mapped[int] = mapped_column(Integer, ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False)
+    best_session_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("motion_sessions.id", ondelete="SET NULL"), nullable=True)
+    best_metrics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    best_recorded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    worst_session_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("motion_sessions.id", ondelete="SET NULL"), nullable=True)
+    worst_metrics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    worst_recorded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    metric_keys: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="exercise_records", primaryjoin="PatientExerciseRecord.patient_id == Patient.patient_id")
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="exercise_records")
 
 
 class ProgressReport(Base):

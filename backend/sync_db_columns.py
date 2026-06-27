@@ -12,7 +12,16 @@ def sync():
         ("ALTER TABLE motion_metrics ADD COLUMN repetitions INTEGER", "repetitions"),
         ("ALTER TABLE motion_metrics ADD COLUMN accuracy_score FLOAT", "accuracy_score"),
         ("ALTER TABLE motion_metrics ADD COLUMN detected_errors JSON", "detected_errors"),
-        ("ALTER TABLE motion_metrics ADD COLUMN max_rom FLOAT", "max_rom")
+        ("ALTER TABLE motion_metrics ADD COLUMN max_rom FLOAT", "max_rom"),
+        ("ALTER TABLE motion_metrics ADD COLUMN joint_metrics JSON", "joint_metrics"),
+        ("ALTER TABLE motion_metrics ADD COLUMN pace JSON", "pace"),
+        ("ALTER TABLE motion_metrics ADD COLUMN rotation JSON", "rotation"),
+        ("ALTER TABLE exercises ADD COLUMN capture_config JSON", "capture_config"),
+        ("ALTER TABLE exercises ADD COLUMN metric_definitions JSON", "metric_definitions"),
+        ("ALTER TABLE exercises ADD COLUMN guide_content JSON", "guide_content"),
+        ("ALTER TABLE exercise_assignments ADD COLUMN config JSON", "assignment_config"),
+        ("ALTER TABLE motion_sessions ADD COLUMN assignment_id INTEGER", "assignment_id"),
+        ("ALTER TABLE motion_sessions ADD COLUMN capture_config_snapshot JSON", "capture_config_snapshot"),
     ]
     
     with engine.connect() as conn:

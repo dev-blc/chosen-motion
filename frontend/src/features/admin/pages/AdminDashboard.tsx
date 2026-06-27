@@ -64,6 +64,8 @@ import {
   LoadingState,
   cn 
 } from '@/components/layout/LayoutComponents';
+import { ExerciseRulesEditor } from '@/features/admin/components/ExerciseRulesEditor';
+import { AssignmentConfigurator } from '@/features/admin/components/AssignmentConfigurator';
 
 type Section = 'dashboard' | 'patients' | 'exercises' | 'reports' | 'analytics' | 'content' | 'settings';
 
@@ -141,6 +143,7 @@ const AdminDashboard: React.FC = () => {
   const [assignDueDate, setAssignDueDate] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [removingAssignmentId, setRemovingAssignmentId] = useState<number | null>(null);
+  const [configuringAssignmentId, setConfiguringAssignmentId] = useState<number | null>(null);
 
   // Monitor screen resize for drawer layout triggers
   useEffect(() => {
@@ -570,6 +573,25 @@ const AdminDashboard: React.FC = () => {
                   <span className="text-2xs text-chosen-text-muted block">
                     Due: {new Date(a.due_date).toLocaleDateString()}
                   </span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-[10px] font-bold text-gold-500"
+                  onClick={() => setConfiguringAssignmentId(configuringAssignmentId === a.id ? null : a.id)}
+                >
+                  {configuringAssignmentId === a.id ? 'Hide Config' : 'Configure'}
+                </Button>
+                {configuringAssignmentId === a.id && selectedPatientId && (
+                  <AssignmentConfigurator
+                    patientId={selectedPatientId}
+                    assignmentId={a.id}
+                    initialConfig={a.config}
+                    onSaved={async () => {
+                      const detail = await fetchPatientDetail(selectedPatientId);
+                      setPatientDetail(detail);
+                    }}
+                  />
                 )}
               </div>
             );
@@ -1525,6 +1547,16 @@ const AdminDashboard: React.FC = () => {
             Save Exercise Changes
           </Button>
         </form>
+        {selectedExerciseId && (
+          <ExerciseRulesEditor
+            exerciseId={selectedExerciseId}
+            rules={exercisesList.find((e) => e.id === selectedExerciseId)?.rules || []}
+            onUpdated={async () => {
+              const updated = await fetchExercisesList();
+              setExercisesList(updated);
+            }}
+          />
+        )}
       </Modal>
     </PageContainer>
   );

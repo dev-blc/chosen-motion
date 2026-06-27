@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { fetchMySessions, fetchPatientProfile, fetchMyAssignments } from '@/services/api';
-import type { ExerciseAssignment, MotionSession } from '@/types/api';
+import { fetchMySessions, fetchPatientProfile, fetchMyAssignments, fetchMyRecords } from '@/services/api';
+import type { ExerciseAssignment, MotionSession, PatientExerciseRecord } from '@/types/api';
 import { 
   Play, 
   Activity, 
@@ -134,7 +134,23 @@ const PatientDashboard: React.FC = () => {
   const [tipsOpen, setTipsOpen] = useState(true);
   const [mistakesOpen, setMistakesOpen] = useState(false);
   const [musclesOpen, setMusclesOpen] = useState(false);
+  const [exerciseRecords, setExerciseRecords] = useState<Record<number, PatientExerciseRecord>>({});
   const navigate = useNavigate();
+
+  const startTracker = (assignment?: ExerciseAssignment | null) => {
+    if (!assignment?.exercise) {
+      navigate('/tracker');
+      return;
+    }
+    navigate('/tracker', {
+      state: {
+        exerciseName: assignment.exercise.name,
+        rules: assignment.exercise.rules,
+        assignmentId: assignment.id,
+        exerciseId: assignment.exercise_id,
+      },
+    });
+  };
 
   // Mock appointments telemetry list
   const [appointmentsList, setAppointmentsList] = useState<any[]>([
@@ -257,14 +273,20 @@ const PatientDashboard: React.FC = () => {
   useEffect(() => {
     async function loadPatientData() {
       try {
-        const [patientData, sessionsData, assignmentsData] = await Promise.all([
+        const [patientData, sessionsData, assignmentsData, recordsData] = await Promise.all([
           fetchPatientProfile(),
           fetchMySessions(),
           fetchMyAssignments(),
+          fetchMyRecords().catch(() => []),
         ]);
         setClinicalProfile(patientData);
         setSessions(sessionsData);
         setAssignments(assignmentsData);
+        const recordMap: Record<number, PatientExerciseRecord> = {};
+        (recordsData as PatientExerciseRecord[]).forEach((r) => {
+          recordMap[r.exercise_id] = r;
+        });
+        setExerciseRecords(recordMap);
       } catch (err) {
         console.error('Failed to load patient data:', err);
       } finally {
@@ -626,7 +648,7 @@ const PatientDashboard: React.FC = () => {
           <Button
             variant="primary"
             className="w-full flex items-center justify-center gap-2 font-bold py-3 text-sm btn-primary"
-            onClick={() => navigate('/tracker', { state: { exerciseName: assignments[0].exercise?.name, rules: assignments[0].exercise?.rules } })}
+            onClick={() => startTracker(assignments[0])}
             leftIcon={<Play className="h-4 w-4 fill-current" />}
           >
             Start Workout Session
@@ -819,7 +841,7 @@ const PatientDashboard: React.FC = () => {
               <Button
                 variant="ghost"
                 size="xs"
-                onClick={() => navigate('/tracker', { state: { exerciseName: assignment.exercise?.name, rules: assignment.exercise?.rules } })}
+                onClick={() => startTracker(assignment)}
                 leftIcon={<ChevronRight className="h-4.5 w-4.5 text-[#A27B41]" />}
                 title="Start workout"
               />
@@ -1955,7 +1977,7 @@ const PatientDashboard: React.FC = () => {
                       <Button
                         variant="primary"
                         className="flex-1 flex items-center justify-center gap-1.5 font-bold py-2 text-xs btn-primary shadow-sm w-full"
-                        onClick={() => navigate('/tracker', { state: { exerciseName: ex.name, rules: ex.rules } })}
+                        onClick={() => startTracker(assignment)}
                       >
                         <Play className="h-3 w-3 fill-current" /> Start
                       </Button>
@@ -1999,9 +2021,12 @@ const PatientDashboard: React.FC = () => {
     );
 
     const exerciseSessionsCount = sessionsForExercise.length;
-    const bestScore = exerciseSessionsCount > 0 
-      ? Math.max(...sessionsForExercise.map(s => Math.round(s.avg_score ?? s.score ?? 0))) 
-      : 0;
+    const apiRecord = exerciseRecords[ex.id];
+    const bestScore = apiRecord?.best_metrics?.accuracy != null
+      ? Math.round(apiRecord.best_metrics.accuracy)
+      : exerciseSessionsCount > 0
+        ? Math.max(...sessionsForExercise.map(s => Math.round(s.avg_score ?? s.score ?? 0)))
+        : 0;
 
     const avgAccuracyForExercise = exerciseSessionsCount > 0 
       ? Math.round(sessionsForExercise.reduce((acc, s) => acc + (s.avg_score ?? s.score ?? 0), 0) / exerciseSessionsCount) 
@@ -2083,7 +2108,7 @@ const PatientDashboard: React.FC = () => {
               <Button
                 variant="primary"
                 className="w-full flex items-center justify-center gap-2 font-bold py-3 text-sm btn-primary"
-                onClick={() => navigate('/tracker', { state: { exerciseName: ex.name, rules: ex.rules } })}
+                onClick={() => startTracker(assignment)}
                 leftIcon={<Play className="h-4.5 w-4.5 fill-current" />}
               >
                 Start Exercise
@@ -2348,7 +2373,7 @@ const PatientDashboard: React.FC = () => {
               <Button
                 variant="primary"
                 className="w-full flex items-center justify-center gap-2 font-bold py-2.5 text-xs btn-primary shadow-sm"
-                onClick={() => navigate('/tracker', { state: { exerciseName: ex.name, rules: ex.rules } })}
+                onClick={() => startTracker(assignment)}
               >
                 Start Exercise
               </Button>

@@ -31,6 +31,7 @@ export const SessionReplayPage: React.FC = () => {
   const [frames, setFrames] = useState<any[]>([]);
   const [accuracy, setAccuracy] = useState<any>(null);
   const [comparison, setComparison] = useState<any>(null);
+  const [comparisonMode, setComparisonMode] = useState<'previous' | 'best' | 'worst'>('previous');
   const [history, setHistory] = useState<any[]>([]);
 
   // Tab State: 'alerts' | 'analytics' | 'compare'
@@ -58,7 +59,7 @@ export const SessionReplayPage: React.FC = () => {
         setAccuracy(accuracyData);
 
         // 4. Fetch comparison metrics
-        const comparisonData = await fetchSessionComparison(id);
+        const comparisonData = await fetchSessionComparison(id, 'previous');
         setComparison(comparisonData);
 
         // 5. Fetch history (exercise progress trends)
@@ -86,6 +87,17 @@ export const SessionReplayPage: React.FC = () => {
 
     loadSessionData();
   }, [sessionId, profile]);
+
+  const handleComparisonModeChange = async (mode: 'previous' | 'best' | 'worst') => {
+    if (!sessionId) return;
+    setComparisonMode(mode);
+    try {
+      const data = await fetchSessionComparison(parseInt(sessionId), mode);
+      setComparison(data);
+    } catch (err) {
+      console.warn('Failed to load comparison mode', err);
+    }
+  };
 
   const handleBack = () => {
     if (profile?.role === 'admin') {
@@ -236,7 +248,10 @@ export const SessionReplayPage: React.FC = () => {
               )}
 
               {activeTab === 'compare' && comparison && (
-                <SessionComparison comparison={comparison} />
+                <SessionComparison
+                  comparison={{ ...comparison, mode: comparisonMode }}
+                  onModeChange={handleComparisonModeChange}
+                />
               )}
             </div>
           </div>

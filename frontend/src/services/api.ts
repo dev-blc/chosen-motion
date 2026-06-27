@@ -132,6 +132,15 @@ export async function uploadMotionSession(sessionData: {
   speed?: number;
   symmetry?: number;
   status?: string;
+  exercise_id?: number;
+  assignment_id?: number;
+  capture_config_snapshot?: Record<string, unknown>;
+  environment?: {
+    declared_components?: string[];
+    noise_level?: number;
+    mirror_present?: boolean;
+    other_users_present?: boolean;
+  };
   metrics_summary?: Record<string, any>;
   telemetry_data?: Array<{
     timestamp_millis: number;
@@ -169,8 +178,20 @@ export async function fetchSessionAccuracy(sessionId: number) {
   return request(`/motion-sessions/${sessionId}/accuracy`);
 }
 
-export async function fetchSessionComparison(sessionId: number) {
-  return request(`/motion-sessions/${sessionId}/comparison`);
+export async function fetchSessionComparison(sessionId: number, mode: 'previous' | 'best' | 'worst' | 'all' = 'previous') {
+  return request(`/motion-sessions/${sessionId}/comparison?mode=${mode}`);
+}
+
+export async function fetchAssignmentPrescription(assignmentId: number) {
+  return request(`/patients/assignments/${assignmentId}/prescription`);
+}
+
+export async function fetchMyRecords() {
+  return request('/patients/records');
+}
+
+export async function fetchExerciseRecord(exerciseId: number) {
+  return request(`/patients/records/${exerciseId}`);
 }
 
 // ==========================================
@@ -282,7 +303,7 @@ export async function deleteExercise(exerciseId: number) {
 
 export async function assignExerciseToPatient(
   patientId: string,
-  data: { exercise_id: number; due_date?: string }
+  data: { exercise_id: number; due_date?: string; config?: Record<string, unknown> }
 ) {
   return request(`/admin/patients/${patientId}/assignments`, {
     method: 'POST',
@@ -302,7 +323,7 @@ export async function removeExerciseAssignment(
 export async function updateExerciseAssignment(
   patientId: string,
   assignmentId: number,
-  data: { due_date?: string; is_completed?: boolean }
+  data: { due_date?: string; is_completed?: boolean; config?: Record<string, unknown> }
 ) {
   return request(`/admin/patients/${patientId}/assignments/${assignmentId}`, {
     method: 'PUT',
@@ -346,6 +367,43 @@ export async function submitSquatFrame(data: {
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export async function createExerciseRule(
+  exerciseId: number,
+  data: {
+    rule_name: string;
+    rule_type?: string;
+    parameters: Record<string, unknown>;
+    status_on_success?: string;
+    status_on_fail?: string;
+  }
+) {
+  return request(`/admin/exercises/${exerciseId}/rules`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateExerciseRule(
+  exerciseId: number,
+  ruleId: number,
+  data: Record<string, unknown>
+) {
+  return request(`/admin/exercises/${exerciseId}/rules/${ruleId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteExerciseRule(exerciseId: number, ruleId: number) {
+  return request(`/admin/exercises/${exerciseId}/rules/${ruleId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchEnvironmentComponents() {
+  return request('/admin/environment-components');
 }
 
 export async function endSquatSession(sessionId: number) {

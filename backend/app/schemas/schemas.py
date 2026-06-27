@@ -170,6 +170,36 @@ class ExerciseRuleResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ExerciseRuleCreate(BaseModel):
+    rule_name: str
+    rule_type: str = "threshold_comparison"
+    parameters: Dict[str, Any]
+    status_on_success: str = "success"
+    status_on_fail: str = "warning"
+
+class ExerciseRuleUpdate(BaseModel):
+    rule_name: Optional[str] = None
+    rule_type: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    status_on_success: Optional[str] = None
+    status_on_fail: Optional[str] = None
+
+class ExerciseGuideContent(BaseModel):
+    description: Optional[str] = None
+    instructions: List[str] = []
+    preparation_tips: List[str] = []
+    common_mistakes: List[str] = []
+    safety_notes: List[str] = []
+    target_muscles: List[str] = []
+    required_equipment: Optional[str] = "None (Bodyweight)"
+    sets: Optional[int] = 3
+    reps: Optional[int] = 10
+    rest: Optional[str] = "30s"
+    difficulty: Optional[str] = "Light"
+    duration: Optional[str] = "5 mins"
+    body_part: Optional[str] = "General"
+    category: Optional[str] = "Rehabilitation"
+
 # Exercise Response
 class ExerciseResponse(BaseModel):
     id: int
@@ -179,6 +209,9 @@ class ExerciseResponse(BaseModel):
     target_rom: Optional[float] = None
     thumbnail_url: Optional[str] = None
     target_joints: Optional[Dict[str, Any]] = None
+    capture_config: Optional[Dict[str, Any]] = None
+    metric_definitions: Optional[Dict[str, Any]] = None
+    guide_content: Optional[Dict[str, Any]] = None
     created_at: datetime
     rules: List[ExerciseRuleResponse] = []
 
@@ -193,6 +226,12 @@ class ExerciseCreateAdmin(BaseModel):
     target_rom: Optional[float] = None
     thumbnail_url: Optional[str] = None
     target_joints: Optional[Dict[str, Any]] = None
+    capture_config: Optional[Dict[str, Any]] = None
+    metric_definitions: Optional[Dict[str, Any]] = None
+    guide_content: Optional[Dict[str, Any]] = None
+    capture_config: Optional[Dict[str, Any]] = None
+    metric_definitions: Optional[Dict[str, Any]] = None
+    guide_content: Optional[Dict[str, Any]] = None
 
 class ExerciseUpdateAdmin(BaseModel):
     name: Optional[str] = None
@@ -201,15 +240,32 @@ class ExerciseUpdateAdmin(BaseModel):
     target_rom: Optional[float] = None
     thumbnail_url: Optional[str] = None
     target_joints: Optional[Dict[str, Any]] = None
+    capture_config: Optional[Dict[str, Any]] = None
+    metric_definitions: Optional[Dict[str, Any]] = None
+    guide_content: Optional[Dict[str, Any]] = None
+
+class AssignmentConfig(BaseModel):
+    target_rom_override: Optional[float] = None
+    sets: Optional[int] = None
+    reps: Optional[int] = None
+    rest_seconds: Optional[int] = None
+    rule_overrides: Optional[List[Dict[str, Any]]] = None
+    notes: Optional[str] = None
+    difficulty: Optional[str] = None
+    duration: Optional[str] = None
+    body_part: Optional[str] = None
+    category: Optional[str] = None
 
 # Exercise Assignment Schemas
 class ExerciseAssignmentCreate(BaseModel):
     exercise_id: int
     due_date: Optional[date] = None
+    config: Optional[Dict[str, Any]] = None
 
 class ExerciseAssignmentUpdate(BaseModel):
     due_date: Optional[date] = None
     is_completed: Optional[bool] = None
+    config: Optional[Dict[str, Any]] = None
 
 class ExerciseAssignmentResponse(BaseModel):
     id: int
@@ -219,6 +275,7 @@ class ExerciseAssignmentResponse(BaseModel):
     assigned_at: datetime
     due_date: Optional[date] = None
     is_completed: bool
+    config: Optional[Dict[str, Any]] = None
     exercise: Optional[ExerciseResponse] = None
 
     class Config:
@@ -277,15 +334,37 @@ class MetricCompare(BaseModel):
     previous: float
     delta: float
 
+class RecordMetricCompare(BaseModel):
+    current: float
+    record: float
+    delta: float
+    is_new_best: bool = False
+
 class SessionComparisonResponse(BaseModel):
     current_session_id: int
     previous_session_id: Optional[int] = None
+    mode: str = "previous"
     rom: MetricCompare
     speed: MetricCompare
     symmetry: MetricCompare
     accuracy: MetricCompare
     smoothness: MetricCompare
     repetitions: MetricCompare
+    best_session_id: Optional[int] = None
+    worst_session_id: Optional[int] = None
+    best: Optional[Dict[str, RecordMetricCompare]] = None
+    worst: Optional[Dict[str, RecordMetricCompare]] = None
+    is_new_personal_best: bool = False
+
+class SessionEnvironmentInput(BaseModel):
+    declared_components: Optional[List[str]] = None
+    noise_level: Optional[int] = None
+    mirror_present: Optional[bool] = None
+    other_users_present: Optional[bool] = None
+
+class SessionUploadResponse(SessionResponse):
+    is_new_personal_best: bool = False
+    assignment_id: Optional[int] = None
 
 class SessionBase(BaseModel):
     title: str = "Motion Tracking Session"
@@ -300,11 +379,16 @@ class SessionBase(BaseModel):
 
 class SessionCreate(SessionBase):
     telemetry_data: Optional[List[Any]] = None
+    exercise_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    environment: Optional[SessionEnvironmentInput] = None
+    capture_config_snapshot: Optional[Dict[str, Any]] = None
 
 class SessionResponse(SessionBase):
     id: int
     patient_id: str
     exercise_id: Optional[int] = None
+    assignment_id: Optional[int] = None
     score: Optional[float] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -351,3 +435,85 @@ class DashboardStats(BaseModel):
     average_duration_seconds: float
     average_session_score: float
     recent_activity: List[SessionResponse] = []
+
+class PatientExerciseRecordResponse(BaseModel):
+    id: int
+    patient_id: str
+    exercise_id: int
+    best_session_id: Optional[int] = None
+    best_metrics: Optional[Dict[str, Any]] = None
+    best_recorded_at: Optional[datetime] = None
+    worst_session_id: Optional[int] = None
+    worst_metrics: Optional[Dict[str, Any]] = None
+    worst_recorded_at: Optional[datetime] = None
+    metric_keys: Optional[Dict[str, Any]] = None
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PrescriptionResponse(BaseModel):
+    assignment_id: int
+    patient_id: str
+    exercise_id: int
+    exercise_name: str
+    target_rom: Optional[float] = None
+    target_joints: Optional[Dict[str, Any]] = None
+    capture_config: Optional[Dict[str, Any]] = None
+    metric_definitions: Optional[Dict[str, Any]] = None
+    rules: List[Dict[str, Any]] = []
+    config: Dict[str, Any] = {}
+    guide: Dict[str, Any] = {}
+    limitations: List[Dict[str, Any]] = []
+
+class PatientLimitationCreate(BaseModel):
+    scope_type: str
+    scope_id: Optional[int] = None
+    limitation_type: str
+    parameters: Dict[str, Any] = {}
+    notes: Optional[str] = None
+    active: bool = True
+
+class PatientLimitationUpdate(BaseModel):
+    scope_type: Optional[str] = None
+    scope_id: Optional[int] = None
+    limitation_type: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+    active: Optional[bool] = None
+
+class PatientLimitationResponse(BaseModel):
+    id: int
+    patient_id: str
+    scope_type: str
+    scope_id: Optional[int] = None
+    limitation_type: str
+    parameters: Dict[str, Any]
+    notes: Optional[str] = None
+    active: bool
+    created_by: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class EnvironmentComponentResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+    category: str
+    icon_url: Optional[str] = None
+    setup_instructions: Optional[str] = None
+    affects_tracking: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class EnvironmentComponentCreate(BaseModel):
+    name: str
+    slug: str
+    category: str
+    icon_url: Optional[str] = None
+    setup_instructions: Optional[str] = None
+    affects_tracking: bool = False
