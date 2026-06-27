@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSession } from '@/services/api';
+import { uploadMotionSession, startSquatSession, submitSquatFrame, endSquatSession, fetchAssignmentPrescription } from '@/services/api';
 import MotionTracking from './MotionTracking';
 import SkeletonMiniViewer from './SkeletonMiniViewer';
+import { EnvironmentChecklist, type EnvironmentSelection } from './EnvironmentChecklist';
 import { PoseBuffer, calculateAngle, computeFrameConfidence } from '../utils/poseProcessor';
 import { GestureTrigger } from '../utils/gestureTrigger';
 import { 
@@ -29,12 +30,17 @@ const TrackerSkeleton: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const exerciseName = location.state?.exerciseName || 'Shoulder Abduction';
+  const assignmentId = location.state?.assignmentId as number | undefined;
+  const exerciseId = location.state?.exerciseId as number | undefined;
   
   const [active, setActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [step, setStep] = useState<'consent' | 'permission' | 'ready' | 'countdown' | 'recording' | 'processing' | 'success' | 'error'>('consent');
+  const [step, setStep] = useState<'consent' | 'permission' | 'environment' | 'ready' | 'countdown' | 'recording' | 'processing' | 'success' | 'error'>('consent');
   const [errorType, setErrorType] = useState<'camera_unavailable' | 'permission_denied' | 'detection_failed' | 'upload_failed' | 'network_lost' | 'timeout' | null>(null);
+  const [environmentSelection, setEnvironmentSelection] = useState<EnvironmentSelection | null>(null);
+  const [prescription, setPrescription] = useState<any>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [isNewPersonalBest, setIsNewPersonalBest] = useState(false);
   const [uploadedSessionId, setUploadedSessionId] = useState<number | null>(null);
   
   const [gestureStatus, setGestureStatus] = useState<'waiting' | 'holding' | 'countdown' | 'active'>('waiting');
@@ -109,6 +115,13 @@ const TrackerSkeleton: React.FC = () => {
   const handleStopRef = useRef<() => Promise<void>>(async () => {});
   const handleStartRef = useRef<() => Promise<void>>(async () => {});
   const activeRef = useRef(false);
+
+  useEffect(() => {
+    if (!assignmentId) return;
+    fetchAssignmentPrescription(assignmentId)
+      .then(setPrescription)
+      .catch((err) => console.warn('Failed to load prescription', err));
+  }, [assignmentId]);
 
   const speak = (text: string) => {
     if ('speechSynthesis' in window) {
@@ -564,6 +577,17 @@ const TrackerSkeleton: React.FC = () => {
         speed: avgSpeed,
         symmetry: 1.0,
         status: liveStatus,
+        exercise_id: exerciseId,
+        assignment_id: assignmentId,
+        capture_config_snapshot: prescription?.capture_guidance || prescription?.capture_config,
+        environment: environmentSelection
+          ? {
+              declared_components: environmentSelection.declared_components,
+              noise_level: environmentSelection.noise_level,
+              mirror_present: environmentSelection.mirror_present,
+              other_users_present: environmentSelection.other_users_present,
+            }
+          : undefined,
         metrics_summary: {
           repetitions: reps,
           final_score: score,
@@ -573,6 +597,9 @@ const TrackerSkeleton: React.FC = () => {
       });
       if (res && (res.id || res.session_id)) {
         setUploadedSessionId(res.id || res.session_id);
+      }
+      if (res?.is_new_personal_best) {
+        setIsNewPersonalBest(true);
       }
       setStep('success');
     } catch (err) {
@@ -612,15 +639,9 @@ const TrackerSkeleton: React.FC = () => {
 
   const handleCameraReady = (ready: boolean) => {
     setCameraReady(ready);
-    if (ready) {
-      if (step === 'permission') {
-        setStep('ready');
-      }
-    } else {
-      if (step === 'permission' || step === 'ready') {
-        setErrorType('permission_denied');
-        setStep('error');
-      }
+    if (!ready && (step === 'permission' || step === 'ready' || step === 'environment')) {
+      setErrorType('permission_denied');
+      setStep('error');
     }
   };
 
@@ -740,7 +761,7 @@ const TrackerSkeleton: React.FC = () => {
               className="flex-1 font-bold py-3 text-xs btn-primary shadow-lg"
               onClick={() => {
                 setCameraReady(true);
-                setStep('ready');
+                setStep('environment');
               }}
             >
               Allow Camera
@@ -1142,15 +1163,17 @@ const TrackerSkeleton: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Placeholders for Symmetry & Stability as requested */}
+                {/* Live symmetry & torso from joint tracking */}
                 <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-850/60 text-left">
                   <span className="text-[9px] text-slate-500 block font-bold uppercase">Symmetry</span>
-                  <span className="font-semibold text-xs text-slate-300 block mt-0.5">1.0 (Balanced)</span>
+                  <span className="font-semibold text-xs text-slate-300 block mt-0.5">
+                    {Math.max(10, Math.min(100, Math.round(100 - Math.abs(liveAngles.knee_l - liveAngles.knee_r) * 3)))}%
+                  </span>
                 </div>
 
                 <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-850/60 text-left">
-                  <span className="text-[9px] text-slate-500 block font-bold uppercase">Form Stability</span>
-                  <span className="font-semibold text-xs text-slate-300 block mt-0.5">96% (Stable)</span>
+                  <span className="text-[9px] text-slate-500 block font-bold uppercase">Torso Lean</span>
+                  <span className="font-semibold text-xs text-slate-300 block mt-0.5">{liveAngles.torso}°</span>
                 </div>
               </div>
             </div>
@@ -1174,6 +1197,12 @@ const TrackerSkeleton: React.FC = () => {
                 <div className="p-2 bg-slate-900/50 rounded-xl border border-slate-850/60">
                   <span className="text-[9px] text-slate-500 block">Knee</span>
                   <span className="font-mono text-slate-200 mt-0.5 block">{liveAngles.knee_l}° / {liveAngles.knee_r}°</span>
+                </div>
+                <div className="p-2 bg-slate-900/50 rounded-xl border border-slate-850/60 col-span-2">
+                  <span className="text-[9px] text-slate-500 block">Fatigue watch (rep #{reps || 1})</span>
+                  <span className="font-mono text-slate-400 mt-0.5 block text-[10px]">
+                    Post-session analysis tracks elbow, hip & knee fatigue per rep
+                  </span>
                 </div>
               </div>
             </div>
@@ -1271,6 +1300,9 @@ const TrackerSkeleton: React.FC = () => {
 
           <div className="space-y-2">
             <h2 className="text-2xl font-display font-bold text-white">Workout Logged Successfully!</h2>
+            {isNewPersonalBest && (
+              <p className="text-sm font-bold text-emerald-400">New Personal Best!</p>
+            )}
             <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
               Your structural telemetry report has been processed and synced with the clinical dashboard. Your provider has been notified.
             </p>
@@ -1391,6 +1423,19 @@ const TrackerSkeleton: React.FC = () => {
       return renderConsent();
     case 'permission':
       return renderPermission();
+    case 'environment':
+      return (
+        <EnvironmentChecklist
+          exerciseName={exerciseName}
+          requirements={prescription?.environment_requirements}
+          captureGuidance={prescription?.capture_guidance}
+          onContinue={(sel) => {
+            setEnvironmentSelection(sel);
+            setStep('ready');
+          }}
+          onBack={() => setStep('permission')}
+        />
+      );
     case 'ready':
       return renderReady();
     case 'countdown':

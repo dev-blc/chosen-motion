@@ -132,6 +132,15 @@ export async function uploadMotionSession(sessionData: {
   speed?: number;
   symmetry?: number;
   status?: string;
+  exercise_id?: number;
+  assignment_id?: number;
+  capture_config_snapshot?: Record<string, unknown>;
+  environment?: {
+    declared_components?: string[];
+    noise_level?: number;
+    mirror_present?: boolean;
+    other_users_present?: boolean;
+  };
   metrics_summary?: Record<string, any>;
   telemetry_data?: Array<{
     timestamp_millis: number;
@@ -169,8 +178,20 @@ export async function fetchSessionAccuracy(sessionId: number) {
   return request(`/motion-sessions/${sessionId}/accuracy`);
 }
 
-export async function fetchSessionComparison(sessionId: number) {
-  return request(`/motion-sessions/${sessionId}/comparison`);
+export async function fetchSessionComparison(sessionId: number, mode: 'previous' | 'best' | 'worst' | 'all' = 'previous') {
+  return request(`/motion-sessions/${sessionId}/comparison?mode=${mode}`);
+}
+
+export async function fetchAssignmentPrescription(assignmentId: number) {
+  return request(`/patients/assignments/${assignmentId}/prescription`);
+}
+
+export async function fetchMyRecords() {
+  return request('/patients/records');
+}
+
+export async function fetchExerciseRecord(exerciseId: number) {
+  return request(`/patients/records/${exerciseId}`);
 }
 
 // ==========================================
@@ -282,7 +303,7 @@ export async function deleteExercise(exerciseId: number) {
 
 export async function assignExerciseToPatient(
   patientId: string,
-  data: { exercise_id: number; due_date?: string }
+  data: { exercise_id: number; due_date?: string; config?: Record<string, unknown> }
 ) {
   return request(`/admin/patients/${patientId}/assignments`, {
     method: 'POST',
@@ -302,7 +323,7 @@ export async function removeExerciseAssignment(
 export async function updateExerciseAssignment(
   patientId: string,
   assignmentId: number,
-  data: { due_date?: string; is_completed?: boolean }
+  data: { due_date?: string; is_completed?: boolean; config?: Record<string, unknown> }
 ) {
   return request(`/admin/patients/${patientId}/assignments/${assignmentId}`, {
     method: 'PUT',
@@ -345,6 +366,165 @@ export async function submitSquatFrame(data: {
   return request('/exercise/squat/frame', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+export async function createExerciseRule(
+  exerciseId: number,
+  data: {
+    rule_name: string;
+    rule_type?: string;
+    parameters: Record<string, unknown>;
+    status_on_success?: string;
+    status_on_fail?: string;
+  }
+) {
+  return request(`/admin/exercises/${exerciseId}/rules`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateExerciseRule(
+  exerciseId: number,
+  ruleId: number,
+  data: Record<string, unknown>
+) {
+  return request(`/admin/exercises/${exerciseId}/rules/${ruleId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteExerciseRule(exerciseId: number, ruleId: number) {
+  return request(`/admin/exercises/${exerciseId}/rules/${ruleId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchEnvironmentComponents() {
+  return request('/admin/environment-components');
+}
+
+export async function fetchPatientLimitations(patientId: string) {
+  return request(`/admin/patients/${patientId}/limitations`);
+}
+
+export async function createPatientLimitation(
+  patientId: string,
+  data: {
+    scope_type: string;
+    scope_id?: number;
+    limitation_type: string;
+    parameters: Record<string, unknown>;
+    notes?: string;
+    active?: boolean;
+  }
+) {
+  return request(`/admin/patients/${patientId}/limitations`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updatePatientLimitation(
+  patientId: string,
+  limitationId: number,
+  data: Record<string, unknown>
+) {
+  return request(`/admin/patients/${patientId}/limitations/${limitationId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePatientLimitation(patientId: string, limitationId: number) {
+  return request(`/admin/patients/${patientId}/limitations/${limitationId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchFrameAnnotations(sessionId: number) {
+  return request(`/motion-sessions/${sessionId}/frame-annotations`);
+}
+
+export async function createFrameAnnotation(
+  sessionId: number,
+  data: {
+    frame_number: number;
+    issue_tags?: string[];
+    notes?: string;
+    suggestions?: string;
+    visible_to_patient?: boolean;
+  }
+) {
+  return request(`/admin/sessions/${sessionId}/frame-annotations`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteFrameAnnotation(sessionId: number, annotationId: number) {
+  return request(`/admin/sessions/${sessionId}/frame-annotations/${annotationId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchClinicAnalytics() {
+  return request('/admin/analytics/clinic');
+}
+
+export async function fetchPatientAnalytics(patientId: string) {
+  return request(`/admin/analytics/patient/${patientId}`);
+}
+
+export async function createProgressReport(patientId: string) {
+  return request(`/admin/patients/${patientId}/progress-reports`, { method: 'POST' });
+}
+
+export async function fetchPatientProgressReports(patientId: string) {
+  return request(`/admin/patients/${patientId}/progress-reports`);
+}
+
+export async function fetchMyProgressReports() {
+  return request('/patients/progress-reports');
+}
+
+export async function backfillExerciseRecords(patientId?: string) {
+  const qs = patientId ? `?patient_id=${encodeURIComponent(patientId)}` : '';
+  return request(`/admin/records/backfill${qs}`, { method: 'POST' });
+}
+
+export async function createEnvironmentComponent(data: {
+  name: string;
+  slug: string;
+  category: string;
+  setup_instructions?: string;
+  affects_tracking?: boolean;
+}) {
+  return request('/admin/environment-components', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchExerciseEnvironmentRequirements(exerciseId: number) {
+  return request(`/admin/exercises/${exerciseId}/environment-requirements`);
+}
+
+export async function addExerciseEnvironmentRequirement(
+  exerciseId: number,
+  data: { component_id: number; required?: boolean; config?: Record<string, unknown> }
+) {
+  return request(`/admin/exercises/${exerciseId}/environment-requirements`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function removeExerciseEnvironmentRequirement(exerciseId: number, requirementId: number) {
+  return request(`/admin/exercises/${exerciseId}/environment-requirements/${requirementId}`, {
+    method: 'DELETE',
   });
 }
 

@@ -38,9 +38,85 @@ export interface Exercise {
   instructions?: string | null;
   target_rom?: number | null;
   thumbnail_url?: string | null;
-  target_joints?: { list?: string[] } | null;
+  target_joints?: { list?: string[]; landmarks?: string[] } | null;
+  capture_config?: Record<string, unknown> | null;
+  metric_definitions?: Record<string, unknown> | null;
+  guide_content?: ExerciseGuideContent | null;
   created_at: string;
   rules?: ExerciseRule[];
+}
+
+export interface ExerciseGuideContent {
+  description?: string;
+  instructions?: string[];
+  preparation_tips?: string[];
+  common_mistakes?: string[];
+  safety_notes?: string[];
+  target_muscles?: string[];
+  required_equipment?: string;
+  sets?: number;
+  reps?: number;
+  rest?: string;
+  difficulty?: string;
+  duration?: string;
+  body_part?: string;
+  category?: string;
+}
+
+export interface AssignmentConfig {
+  target_rom_override?: number;
+  sets?: number;
+  reps?: number;
+  rest_seconds?: number;
+  rule_overrides?: Array<{ rule_id: number; value: number }>;
+  notes?: string;
+  difficulty?: string;
+  duration?: string;
+  body_part?: string;
+  category?: string;
+}
+
+export interface Prescription {
+  assignment_id: number;
+  patient_id: string;
+  exercise_id: number;
+  exercise_name: string;
+  target_rom?: number | null;
+  target_joints?: Record<string, unknown> | null;
+  capture_config?: Record<string, unknown> | null;
+  capture_guidance?: Record<string, unknown> | null;
+  rules: ExerciseRule[];
+  config: AssignmentConfig;
+  guide: {
+    description?: string;
+    instructions?: string[];
+    preparation_tips?: string[];
+    common_mistakes?: string[];
+    safety_notes?: string[];
+    target_muscles?: string[];
+    required_equipment?: string;
+  };
+  limitations: Array<Record<string, unknown>>;
+  environment_requirements?: Array<{
+    slug: string;
+    name: string;
+    category?: string;
+    required?: boolean;
+    affects_tracking?: boolean;
+    setup_instructions?: string;
+  }>;
+}
+
+export interface PatientExerciseRecord {
+  id: number;
+  patient_id: string;
+  exercise_id: number;
+  best_session_id?: number | null;
+  best_metrics?: Record<string, number> | null;
+  best_recorded_at?: string | null;
+  worst_session_id?: number | null;
+  worst_metrics?: Record<string, number> | null;
+  worst_recorded_at?: string | null;
 }
 
 export interface ExerciseAssignment {
@@ -51,6 +127,7 @@ export interface ExerciseAssignment {
   assigned_at: string;
   due_date?: string | null;
   is_completed: boolean;
+  config?: AssignmentConfig | null;
   exercise?: Exercise | null;
 }
 
@@ -58,6 +135,7 @@ export interface MotionSession {
   id: number;
   patient_id: string;
   exercise_id?: number | null;
+  assignment_id?: number | null;
   title: string;
   description?: string | null;
   duration_seconds: number;
@@ -118,6 +196,9 @@ export function sessionRom(session: MotionSession): number {
 export function exerciseJointTags(exercise: Exercise): string[] {
   if (exercise.target_joints?.list?.length) {
     return exercise.target_joints.list;
+  }
+  if (exercise.target_joints?.landmarks?.length) {
+    return exercise.target_joints.landmarks;
   }
   return [];
 }

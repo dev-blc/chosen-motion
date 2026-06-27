@@ -21,6 +21,11 @@ interface MetricsSummary {
   repetitions: number;
   accuracy_score: number;
   max_rom: number;
+  fatigue?: {
+    overall_score?: number;
+    fatigue_onset_rep?: number | null;
+    most_tiring_joint?: string | null;
+  };
 }
 
 interface MetricsPanelProps {
@@ -29,6 +34,7 @@ interface MetricsPanelProps {
   score: number;
   status?: string;
   errorCount?: number;
+  fatigue?: MetricsSummary['fatigue'];
 }
 
 export const MetricsPanel: React.FC<MetricsPanelProps> = ({
@@ -36,7 +42,8 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
   durationSeconds,
   score,
   status = 'completed',
-  errorCount = 0
+  errorCount = 0,
+  fatigue,
 }) => {
   const getMetricColor = (val: number) => {
     if (val >= 90) {
@@ -260,6 +267,21 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
             </div>
           </div>
         </div>
+
+        {fatigue && (fatigue.overall_score !== undefined || fatigue.fatigue_onset_rep) && (
+          <div className="flex items-center gap-3 p-3 rounded-chosen-md bg-chosen-raised border border-chosen col-span-2">
+            <div className="p-2 bg-gold-500/10 text-gold-500 rounded-chosen-sm">
+              <Activity className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col text-left">
+              <span className="text-[10px] text-chosen-text-muted font-bold uppercase tracking-wider">Fatigue</span>
+              <span className="text-sm font-bold text-chosen-text-primary">
+                {fatigue.overall_score ?? 0} pts
+                {fatigue.fatigue_onset_rep ? ` · onset rep #${fatigue.fatigue_onset_rep}` : ''}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

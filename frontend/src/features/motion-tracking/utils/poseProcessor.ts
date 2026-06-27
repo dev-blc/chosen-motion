@@ -51,20 +51,26 @@ export interface Landmark {
   presence?: number;
 }
 
-/** Extracted coordinates for the 12 primary tracked joints [x, y, z] */
+/** Extracted coordinates for tracked joints [x, y, z] */
 export interface JointCoordinates {
-  shoulder_l: number[]; // Landmark 11
-  shoulder_r: number[]; // Landmark 12
-  elbow_l:    number[]; // Landmark 13
-  elbow_r:    number[]; // Landmark 14
-  wrist_l:    number[]; // Landmark 15
-  wrist_r:    number[]; // Landmark 16
-  hip_l:      number[]; // Landmark 23
-  hip_r:      number[]; // Landmark 24
-  knee_l:     number[]; // Landmark 25
-  knee_r:     number[]; // Landmark 26
-  ankle_l:    number[]; // Landmark 27
-  ankle_r:    number[]; // Landmark 28
+  shoulder_l: number[];
+  shoulder_r: number[];
+  elbow_l:    number[];
+  elbow_r:    number[];
+  wrist_l:    number[];
+  wrist_r:    number[];
+  hip_l:      number[];
+  hip_r:      number[];
+  knee_l:     number[];
+  knee_r:     number[];
+  ankle_l:    number[];
+  ankle_r:    number[];
+  heel_l?:    number[];
+  heel_r?:    number[];
+  foot_index_l?: number[];
+  foot_index_r?: number[];
+  index_l?:   number[];
+  index_r?:   number[];
 }
 
 /** A single telemetry frame captured during an exercise session */
@@ -231,7 +237,10 @@ export const PRIMARY_JOINT_INDICES: number[] = [
  * Extract the 12 primary joint coordinates from 33 raw MediaPipe landmarks.
  * Only returns landmarks with visibility >= 0.0 (uses raw values).
  */
-export function extractJoints(landmarks: Landmark[]): Partial<JointCoordinates> {
+export function extractJoints(
+  landmarks: Landmark[],
+  landmarkKeys?: string[]
+): Partial<JointCoordinates> {
   if (!landmarks || landmarks.length === 0) return {};
 
   const getCoord = (idx: number): number[] => {
@@ -239,20 +248,44 @@ export function extractJoints(landmarks: Landmark[]): Partial<JointCoordinates> 
     return pt ? [pt.x, pt.y, pt.z] : [0, 0, 0];
   };
 
-  return {
-    shoulder_l: getCoord(MediaPipeIndices.SHOULDER_L),
-    shoulder_r: getCoord(MediaPipeIndices.SHOULDER_R),
-    elbow_l:    getCoord(MediaPipeIndices.ELBOW_L),
-    elbow_r:    getCoord(MediaPipeIndices.ELBOW_R),
-    wrist_l:    getCoord(MediaPipeIndices.WRIST_L),
-    wrist_r:    getCoord(MediaPipeIndices.WRIST_R),
-    hip_l:      getCoord(MediaPipeIndices.HIP_L),
-    hip_r:      getCoord(MediaPipeIndices.HIP_R),
-    knee_l:     getCoord(MediaPipeIndices.KNEE_L),
-    knee_r:     getCoord(MediaPipeIndices.KNEE_R),
-    ankle_l:    getCoord(MediaPipeIndices.ANKLE_L),
-    ankle_r:    getCoord(MediaPipeIndices.ANKLE_R),
+  const keyToIndex: Record<string, number> = {
+    shoulder_l: MediaPipeIndices.SHOULDER_L,
+    shoulder_r: MediaPipeIndices.SHOULDER_R,
+    elbow_l: MediaPipeIndices.ELBOW_L,
+    elbow_r: MediaPipeIndices.ELBOW_R,
+    wrist_l: MediaPipeIndices.WRIST_L,
+    wrist_r: MediaPipeIndices.WRIST_R,
+    index_l: MediaPipeIndices.INDEX_L,
+    index_r: MediaPipeIndices.INDEX_R,
+    hip_l: MediaPipeIndices.HIP_L,
+    hip_r: MediaPipeIndices.HIP_R,
+    knee_l: MediaPipeIndices.KNEE_L,
+    knee_r: MediaPipeIndices.KNEE_R,
+    ankle_l: MediaPipeIndices.ANKLE_L,
+    ankle_r: MediaPipeIndices.ANKLE_R,
+    heel_l: MediaPipeIndices.HEEL_L,
+    heel_r: MediaPipeIndices.HEEL_R,
+    foot_index_l: MediaPipeIndices.FOOT_INDEX_L,
+    foot_index_r: MediaPipeIndices.FOOT_INDEX_R,
   };
+
+  const defaultKeys = [
+    'shoulder_l', 'shoulder_r', 'elbow_l', 'elbow_r', 'wrist_l', 'wrist_r',
+    'hip_l', 'hip_r', 'knee_l', 'knee_r', 'ankle_l', 'ankle_r',
+    'heel_l', 'heel_r', 'foot_index_l', 'foot_index_r',
+  ];
+
+  const keys = landmarkKeys?.length ? landmarkKeys : defaultKeys;
+  const result: Partial<JointCoordinates> = {};
+
+  for (const key of keys) {
+    const idx = keyToIndex[key];
+    if (idx !== undefined) {
+      (result as Record<string, number[]>)[key] = getCoord(idx);
+    }
+  }
+
+  return result;
 }
 
 /**

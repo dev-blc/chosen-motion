@@ -16,6 +16,7 @@ import {
   deleteExercise,
   assignExerciseToPatient,
   removeExerciseAssignment,
+  createProgressReport,
 } from '@/services/api';
 import type {
   DashboardStats,
@@ -51,7 +52,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea, Select, Checkbox, Toggle } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { Card, StatisticCard, ExerciseCard, EmptyCard, AnalyticsCard } from '@/components/ui/Card';
+import { Card, StatisticCard, ExerciseCard, EmptyCard } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Status';
 import { 
   PageContainer, 
@@ -64,6 +65,11 @@ import {
   LoadingState,
   cn 
 } from '@/components/layout/LayoutComponents';
+import { ExerciseRulesEditor } from '@/features/admin/components/ExerciseRulesEditor';
+import { AssignmentConfigurator } from '@/features/admin/components/AssignmentConfigurator';
+import { PatientLimitations } from '@/features/admin/components/PatientLimitations';
+import { AdminAnalyticsTab } from '@/features/admin/components/AdminAnalyticsTab';
+import { EnvironmentCatalog } from '@/features/admin/components/EnvironmentCatalog';
 
 type Section = 'dashboard' | 'patients' | 'exercises' | 'reports' | 'analytics' | 'content' | 'settings';
 
@@ -141,6 +147,7 @@ const AdminDashboard: React.FC = () => {
   const [assignDueDate, setAssignDueDate] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [removingAssignmentId, setRemovingAssignmentId] = useState<number | null>(null);
+  const [configuringAssignmentId, setConfiguringAssignmentId] = useState<number | null>(null);
 
   // Monitor screen resize for drawer layout triggers
   useEffect(() => {
@@ -571,11 +578,57 @@ const AdminDashboard: React.FC = () => {
                     Due: {new Date(a.due_date).toLocaleDateString()}
                   </span>
                 )}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-[10px] font-bold text-gold-500"
+                  onClick={() => setConfiguringAssignmentId(configuringAssignmentId === a.id ? null : a.id)}
+                >
+                  {configuringAssignmentId === a.id ? 'Hide Config' : 'Configure'}
+                </Button>
+                {configuringAssignmentId === a.id && selectedPatientId && (
+                  <AssignmentConfigurator
+                    patientId={selectedPatientId}
+                    assignmentId={a.id}
+                    initialConfig={a.config}
+                    onSaved={async () => {
+                      const detail = await fetchPatientDetail(selectedPatientId);
+                      setPatientDetail(detail);
+                    }}
+                  />
+                )}
               </div>
             );
           })
         )}
       </div>
+
+      {selectedPatientId && (
+        <PatientLimitations
+          patientId={selectedPatientId}
+          exerciseOptions={(patientDetail.assignments || [])
+            .filter((a) => a.exercise)
+            .map((a) => ({ id: a.exercise_id, name: a.exercise?.name || `Exercise ${a.exercise_id}` }))}
+        />
+      )}
+
+      {selectedPatientId && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="w-full"
+          onClick={async () => {
+            try {
+              const report = await createProgressReport(selectedPatientId);
+              alert(report.summary);
+            } catch (err: any) {
+              alert(err.message || 'Failed to generate report.');
+            }
+          }}
+        >
+          Generate Progress Report
+        </Button>
+      )}
 
       {/* Sessions progress history */}
       <div className="space-y-2">
@@ -1110,72 +1163,7 @@ const AdminDashboard: React.FC = () => {
                 TAB: ANALYTICS
                 ========================================== */}
             {activeTab === 'analytics' && (
-              <div className="space-y-8 animate-slide-up text-left">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {/* ROM Curve */}
-                  <AnalyticsCard
-                    title="Flexion (ROM) Recovery Progress"
-                    subtitle="Average degrees achieved over the last 4 weeks"
-                  >
-                    <div className="h-64 flex items-end gap-6 justify-between pt-6 border-b border-l border-chosen px-4">
-                      <div className="flex flex-col items-center w-full gap-2">
-                        <div className="bg-[#A27B41]/80 w-full rounded-t-lg transition-all duration-500" style={{ height: '110px' }} />
-                        <span className="text-[10px] font-bold text-chosen-text-muted">Week 1 (110°)</span>
-                      </div>
-                      <div className="flex flex-col items-center w-full gap-2">
-                        <div className="bg-[#A27B41]/80 w-full rounded-t-lg transition-all duration-500" style={{ height: '120px' }} />
-                        <span className="text-[10px] font-bold text-chosen-text-muted">Week 2 (120°)</span>
-                      </div>
-                      <div className="flex flex-col items-center w-full gap-2">
-                        <div className="bg-[#A27B41]/80 w-full rounded-t-lg transition-all duration-500" style={{ height: '135px' }} />
-                        <span className="text-[10px] font-bold text-chosen-text-muted">Week 3 (135°)</span>
-                      </div>
-                      <div className="flex flex-col items-center w-full gap-2">
-                        <div className="bg-gold-500 w-full rounded-t-lg transition-all duration-500" style={{ height: '142px' }} />
-                        <span className="text-[10px] font-bold text-chosen-text-muted">Week 4 (142°)</span>
-                      </div>
-                    </div>
-                  </AnalyticsCard>
-
-                  {/* Accuracy */}
-                  <AnalyticsCard
-                    title="Form Alignment Scores"
-                    subtitle="Aggregated sensor tracking scores"
-                  >
-                    <div className="space-y-4 pt-4">
-                      <div className="space-y-1.5 text-left">
-                        <div className="flex justify-between text-xs font-semibold">
-                          <span className="text-chosen-text-secondary">Shoulder Alignment</span>
-                          <span className="text-chosen-text-primary">94%</span>
-                        </div>
-                        <div className="w-full bg-chosen-surface h-2 rounded-full overflow-hidden">
-                          <div className="bg-gold-500 h-full rounded-full" style={{ width: '94%' }} />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 text-left">
-                        <div className="flex justify-between text-xs font-semibold">
-                          <span className="text-chosen-text-secondary">Elbow Flexion</span>
-                          <span className="text-chosen-text-primary">88%</span>
-                        </div>
-                        <div className="w-full bg-chosen-surface h-2 rounded-full overflow-hidden">
-                          <div className="bg-gold-500 h-full rounded-full" style={{ width: '88%' }} />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 text-left">
-                        <div className="flex justify-between text-xs font-semibold">
-                          <span className="text-chosen-text-secondary">Knee Symmetry</span>
-                          <span className="text-chosen-text-primary">92%</span>
-                        </div>
-                        <div className="w-full bg-chosen-surface h-2 rounded-full overflow-hidden">
-                          <div className="bg-gold-500 h-full rounded-full" style={{ width: '92%' }} />
-                        </div>
-                      </div>
-                    </div>
-                  </AnalyticsCard>
-                </div>
-              </div>
+              <AdminAnalyticsTab />
             )}
 
             {/* ==========================================
@@ -1525,6 +1513,19 @@ const AdminDashboard: React.FC = () => {
             Save Exercise Changes
           </Button>
         </form>
+        {selectedExerciseId && (
+          <>
+            <ExerciseRulesEditor
+              exerciseId={selectedExerciseId}
+              rules={exercisesList.find((e) => e.id === selectedExerciseId)?.rules || []}
+              onUpdated={async () => {
+                const updated = await fetchExercisesList();
+                setExercisesList(updated);
+              }}
+            />
+            <EnvironmentCatalog exerciseId={selectedExerciseId} />
+          </>
+        )}
       </Modal>
     </PageContainer>
   );

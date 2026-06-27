@@ -1,22 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowLeft, AlertCircle, BarChart3, ShieldAlert, GitCompare } from 'lucide-react';
+import { ArrowLeft, AlertCircle, BarChart3, ShieldAlert, GitCompare, Crosshair, BatteryLow, Stethoscope } from 'lucide-react';
 import {
   fetchSessionDetail,
   fetchSessionFrames,
   fetchSessionAccuracy,
   fetchSessionComparison,
   fetchMySessions,
-  fetchPatientDetail
+  fetchPatientDetail,
+  fetchFrameAnnotations,
 } from '@/services/api';
 import { SkeletonReplay } from './SkeletonReplay';
 import { MetricsPanel } from './MetricsPanel';
 import { ErrorList } from './ErrorList';
 import { SessionComparison } from './SessionComparison';
 import { SessionAnalytics } from './SessionAnalytics';
+import { PositionAnalysis } from './PositionAnalysis';
+import { FatiguePanel } from './FatiguePanel';
+import { FrameAnnotationEditor } from './FrameAnnotationEditor';
+import { ClinicianNotesPanel } from './ClinicianNotesPanel';
+import { EnvironmentBanner } from './EnvironmentBanner';
+import type { FrameAnnotation } from './FrameAnnotationEditor';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Status';
+
+type ReplayTab = 'alerts' | 'analytics' | 'position' | 'fatigue' | 'compare' | 'clinician';
 
 export const SessionReplayPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -31,10 +40,21 @@ export const SessionReplayPage: React.FC = () => {
   const [frames, setFrames] = useState<any[]>([]);
   const [accuracy, setAccuracy] = useState<any>(null);
   const [comparison, setComparison] = useState<any>(null);
+  const [comparisonMode, setComparisonMode] = useState<'previous' | 'best' | 'worst'>('previous');
   const [history, setHistory] = useState<any[]>([]);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [annotations, setAnnotations] = useState<FrameAnnotation[]>([]);
 
-  // Tab State: 'alerts' | 'analytics' | 'compare'
-  const [activeTab, setActiveTab] = useState<'alerts' | 'analytics' | 'compare'>('alerts');
+  const [activeTab, setActiveTab] = useState<ReplayTab>('alerts');
+
+  const loadAnnotations = useCallback(async (id: number) => {
+    try {
+      const data = await fetchFrameAnnotations(id);
+      setAnnotations(data);
+    } catch (err) {
+      console.warn('Failed to load frame annotations', err);
+    }
+  }, []);
 
   useEffect(() => {
     const loadSessionData = async () => {
@@ -58,8 +78,10 @@ export const SessionReplayPage: React.FC = () => {
         setAccuracy(accuracyData);
 
         // 4. Fetch comparison metrics
-        const comparisonData = await fetchSessionComparison(id);
+        const comparisonData = await fetchSessionComparison(id, 'previous');
         setComparison(comparisonData);
+
+        await loadAnnotations(id);
 
         // 5. Fetch history (exercise progress trends)
         try {
@@ -85,7 +107,18 @@ export const SessionReplayPage: React.FC = () => {
     };
 
     loadSessionData();
-  }, [sessionId, profile]);
+  }, [sessionId, profile, loadAnnotations]);
+
+  const handleComparisonModeChange = async (mode: 'previous' | 'best' | 'worst') => {
+    if (!sessionId) return;
+    setComparisonMode(mode);
+    try {
+      const data = await fetchSessionComparison(parseInt(sessionId), mode);
+      setComparison(data);
+    } catch (err) {
+      console.warn('Failed to load comparison mode', err);
+    }
+  };
 
   const handleBack = () => {
     if (profile?.role === 'admin') {
@@ -126,6 +159,17 @@ export const SessionReplayPage: React.FC = () => {
     );
   }
 
+  const metrics = session.metrics_summary || {};
+  const isAdmin = profile?.role === 'admin';
+  const annotatedFrames = [...new Set(annotations.map((a) => a.frame_number))];
+
+  const tabClass = (tab: ReplayTab) =>
+    `flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold rounded-chosen-sm transition-all ${
+      activeTab === tab
+        ? 'bg-gold-500/10 text-gold-500 border border-gold-500/20 shadow-chosen-sm'
+        : 'text-chosen-text-secondary hover:text-chosen-text-primary'
+    }`;
+
   return (
     <div className="min-h-screen bg-chosen-bg text-chosen-text-primary p-4 md:p-6 lg:p-8 flex flex-col gap-6">
       
@@ -159,13 +203,17 @@ export const SessionReplayPage: React.FC = () => {
         )}
       </div>
 
+      {/* Environment context */}
+      <EnvironmentBanner environment={session.environment_context} />
+
       {/* Full Width Metrics Deck */}
       <MetricsPanel
-        metrics={session.metrics_summary || {}}
+        metrics={metrics}
         durationSeconds={session.duration_seconds}
         score={Math.round(session.score || 0)}
         status={session.status}
         errorCount={accuracy?.detected_errors?.length || 0}
+        fatigue={metrics.fatigue}
       />
 
       {/* Main Split Layout */}
@@ -175,7 +223,10 @@ export const SessionReplayPage: React.FC = () => {
         <div className="lg:col-span-7 flex flex-col gap-4">
           <SkeletonReplay 
             frames={frames} 
-            exerciseName={session.title ? session.title.split(" - ")[0] : "Exercise"} 
+            exerciseName={session.title ? session.title.split(" - ")[0] : "Exercise"}
+            currentFrameIdx={currentFrame}
+            onFrameChange={setCurrentFrame}
+            annotatedFrames={annotatedFrames}
           />
         </div>
 
@@ -183,40 +234,30 @@ export const SessionReplayPage: React.FC = () => {
         <div className="lg:col-span-5 flex flex-col min-h-[520px] lg:min-h-0 lg:h-full w-full">
           <div className="flex flex-col flex-1 min-h-0 bg-chosen-raised border border-chosen rounded-chosen-lg overflow-hidden">
             {/* Tab selectors */}
-            <div className="flex-shrink-0 flex p-1.5 m-3 mb-0 bg-chosen-surface border border-chosen rounded-chosen-md gap-1">
-              <button
-                onClick={() => setActiveTab('alerts')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-chosen-sm transition-all ${
-                  activeTab === 'alerts'
-                    ? 'bg-gold-500/10 text-gold-500 border border-gold-500/20 shadow-chosen-sm'
-                    : 'text-chosen-text-secondary hover:text-chosen-text-primary'
-                }`}
-              >
-                <ShieldAlert className="h-4 w-4" />
-                <span>Form Alerts</span>
+            <div className="flex-shrink-0 flex flex-wrap p-1.5 m-3 mb-0 bg-chosen-surface border border-chosen rounded-chosen-md gap-1">
+              <button onClick={() => setActiveTab('alerts')} className={tabClass('alerts')}>
+                <ShieldAlert className="h-3.5 w-3.5" />
+                <span>Alerts</span>
               </button>
-              <button
-                onClick={() => setActiveTab('analytics')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-chosen-sm transition-all ${
-                  activeTab === 'analytics'
-                    ? 'bg-gold-500/10 text-gold-500 border border-gold-500/20 shadow-chosen-sm'
-                    : 'text-chosen-text-secondary hover:text-chosen-text-primary'
-                }`}
-              >
-                <BarChart3 className="h-4 w-4" />
-                <span className="hidden sm:inline">Waveform & Trends</span>
-                <span className="sm:hidden">Trends</span>
+              <button onClick={() => setActiveTab('analytics')} className={tabClass('analytics')}>
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span>Trends</span>
               </button>
-              <button
-                onClick={() => setActiveTab('compare')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-chosen-sm transition-all ${
-                  activeTab === 'compare'
-                    ? 'bg-gold-500/10 text-gold-500 border border-gold-500/20 shadow-chosen-sm'
-                    : 'text-chosen-text-secondary hover:text-chosen-text-primary'
-                }`}
-              >
-                <GitCompare className="h-4 w-4" />
-                <span>Comparison</span>
+              <button onClick={() => setActiveTab('position')} className={tabClass('position')}>
+                <Crosshair className="h-3.5 w-3.5" />
+                <span>Position</span>
+              </button>
+              <button onClick={() => setActiveTab('fatigue')} className={tabClass('fatigue')}>
+                <BatteryLow className="h-3.5 w-3.5" />
+                <span>Fatigue</span>
+              </button>
+              <button onClick={() => setActiveTab('compare')} className={tabClass('compare')}>
+                <GitCompare className="h-3.5 w-3.5" />
+                <span>Compare</span>
+              </button>
+              <button onClick={() => setActiveTab('clinician')} className={tabClass('clinician')}>
+                <Stethoscope className="h-3.5 w-3.5" />
+                <span>Clinician</span>
               </button>
             </div>
 
@@ -235,8 +276,40 @@ export const SessionReplayPage: React.FC = () => {
                 />
               )}
 
+              {activeTab === 'position' && (
+                <PositionAnalysis
+                  jointMetrics={metrics.joint_metrics}
+                  pace={metrics.pace}
+                  rotation={metrics.rotation}
+                />
+              )}
+
+              {activeTab === 'fatigue' && (
+                <FatiguePanel fatigue={metrics.fatigue} />
+              )}
+
               {activeTab === 'compare' && comparison && (
-                <SessionComparison comparison={comparison} />
+                <SessionComparison
+                  comparison={{ ...comparison, mode: comparisonMode }}
+                  onModeChange={handleComparisonModeChange}
+                />
+              )}
+
+              {activeTab === 'clinician' && (
+                isAdmin && sessionId ? (
+                  <FrameAnnotationEditor
+                    sessionId={parseInt(sessionId, 10)}
+                    currentFrame={currentFrame}
+                    annotations={annotations}
+                    onSaved={() => loadAnnotations(parseInt(sessionId, 10))}
+                    onJumpToFrame={setCurrentFrame}
+                  />
+                ) : (
+                  <ClinicianNotesPanel
+                    annotations={annotations}
+                    onJumpToFrame={setCurrentFrame}
+                  />
+                )
               )}
             </div>
           </div>
